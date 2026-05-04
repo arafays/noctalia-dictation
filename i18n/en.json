@@ -1,0 +1,35 @@
+{
+  "widget": {
+    "idle": "Click to start dictation",
+    "setup": "Installing dependencies...",
+    "starting": "Starting backend...",
+    "recording": "Recording",
+    "transcribing": "Transcribing...",
+    "error": "Error: {message}"
+  },
+  "panel": {
+    "title": "Dictation",
+    "history": "Recent transcriptions",
+    "empty": "No transcriptions yet. Click the mic icon in the bar to start.",
+    "clear": "Clear history",
+    "copy": "Copy to clipboard",
+    "retype": "Type again"
+  },
+  "settings": {
+    "title": "Dictation Settings",
+    "model": "Whisper model",
+    "modelDesc": "Larger models are more accurate but slower",
+    "language": "Language",
+    "languageDesc": "Auto-detect or pick a specific language",
+    "device": "Compute device",
+    "deviceDesc": "Auto picks CUDA if available",
+    "computeType": "Compute type",
+    "computeTypeDesc": "int8 is fastest on CPU, float16 for GPU",
+    "vad": "Voice activity detection",
+    "vadDesc": "Automatically stop recording during silence",
+    "timeout": "Recording timeout",
+    "timeoutDesc": "Maximum seconds to record before auto-stop",
+    "backendStatus": "Backend:",
+    "restartBackend": "Restart"
+  }
+}

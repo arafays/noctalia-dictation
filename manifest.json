@@ -1,0 +1,29 @@
+{
+  "id": "dictation",
+  "name": "Dictation",
+  "version": "0.0.1",
+  "minNoctaliaVersion": "4.0.0",
+  "author": "Abdul Rafay Shaikh",
+  "license": "MIT",
+  "repository": "https://github.com/arafays/noctalia-dictation",
+  "description": "Local voice dictation using faster-whisper. Click the mic icon to start speaking — transcribed text appears in your focused input field.",
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml",
+    "main": "Main.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {
+      "model": "base",
+      "language": "auto",
+      "device": "auto",
+      "computeType": "int8",
+      "vadEnabled": true,
+      "recordingTimeout": 30
+    }
+  }
+}
