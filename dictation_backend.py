@@ -6,12 +6,12 @@ import contextlib
 import fcntl
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-import wave
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ SIGNAL_FILE = RUNTIME_DIR / "noctalia-dictation-signal"
 PID_FILE = RUNTIME_DIR / "noctalia-dictation-pid"
 TEMP_DIR = Path(tempfile.gettempdir())
 MIN_RECORDING_SEC = 0.5
+_cuda_available: bool | None = None
 
 _stop_event = threading.Event()
 _recording_thread: threading.Thread | None = None
@@ -42,62 +43,19 @@ def send_status(state: str, message: str = "", text: str = "") -> None:
 
 
 def _has_cuda() -> bool:
+    global _cuda_available
+    if _cuda_available is not None:
+        return _cuda_available
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
             capture_output=True, timeout=2, check=False,
         )
     except Exception:
+        _cuda_available = False
         return False
-    else:
-        return result.returncode == 0
-
-
-def _record(duration: float, fs: int, vad: bool, output_path: Path) -> float:
-    audio_chunks: list[np.ndarray] = []
-    chunk_sec = 0.3
-    silence_threshold = 0.01
-    consecutive_silence = 0
-    max_silence_chunks = int(1.5 / chunk_sec)
-
-    for _ in range(int(duration / chunk_sec)):
-        if _stop_event.is_set():
-            break
-        chunk = sd.rec(int(fs * chunk_sec), samplerate=fs, channels=1, dtype="float32")
-        sd.wait()
-        if _stop_event.is_set():
-            break
-        audio_chunks.append(chunk)
-        if vad:
-            rms = float(np.sqrt(np.mean(chunk ** 2)))
-            if rms < silence_threshold:
-                consecutive_silence += 1
-            else:
-                consecutive_silence = 0
-            if consecutive_silence >= max_silence_chunks:
-                break
-
-    if not audio_chunks:
-        return 0.0
-    audio = np.concatenate(audio_chunks, axis=0).flatten()
-    recorded_sec = len(audio) / fs
-    if recorded_sec < MIN_RECORDING_SEC:
-        return recorded_sec
-    audio_int16 = (audio * 32767).astype(np.int16)
-    with wave.open(str(output_path), "w") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(fs)
-        wf.writeframes(audio_int16.tobytes())
-    return recorded_sec
-
-
-def _transcribe(model: WhisperModel, language: str, audio_path: Path) -> str:
-    opts: dict[str, Any] = {"beam_size": 5}
-    if language and language != "auto":
-        opts["language"] = language
-    segments, _info = model.transcribe(str(audio_path), **opts)
-    return " ".join(s.text for s in segments).strip()
+    _cuda_available = result.returncode == 0
+    return _cuda_available
 
 
 def _type_text(text: str) -> None:
@@ -120,6 +78,34 @@ def _type_text(text: str) -> None:
             continue
 
 
+def _get_new_text(full_text: str, previous_text: str) -> str:
+    if not full_text:
+        return ""
+    if not previous_text:
+        return full_text
+    if full_text.startswith(previous_text):
+        return full_text[len(previous_text):]
+    return full_text
+
+
+def _transcribe_accumulated(
+    model: WhisperModel, language: str, chunks: list[np.ndarray], fs: int,
+) -> str:
+    audio = np.concatenate(chunks, axis=0).flatten()
+    opts: dict[str, Any] = {"beam_size": 5}
+    if language and language != "auto":
+        opts["language"] = language
+    segments, _info = model.transcribe(audio, **opts)
+    return " ".join(s.text for s in segments).strip()
+
+
+def _copy_to_clipboard(text: str) -> None:
+    try:
+        subprocess.run(["wl-copy"], input=text.encode(), check=True, timeout=2)
+    except Exception:
+        pass
+
+
 def cmd_start(model: WhisperModel, language: str, vad: bool, timeout: float) -> None:
     global _recording_thread
     with _start_lock:
@@ -128,7 +114,7 @@ def cmd_start(model: WhisperModel, language: str, vad: bool, timeout: float) -> 
         _stop_event.clear()
         send_status("recording", "")
         _recording_thread = threading.Thread(
-            target=_record_and_transcribe,
+            target=_record_and_transcribe_streaming,
             args=(model, language, vad, timeout),
             daemon=True,
         )
@@ -146,26 +132,89 @@ def cmd_exit() -> None:
     send_status("stopped", "")
 
 
-def _record_and_transcribe(
+def _record_and_transcribe_streaming(
     model: WhisperModel, language: str, vad: bool, timeout: float,
 ) -> None:
-    audio_path = TEMP_DIR / f"noctalia-dictation-{os.getpid()}-{threading.get_ident()}.wav"
+    all_chunks: list[np.ndarray] = []
+    full_text = ""
+    previous_text = ""
+    chunk_sec = 0.3
+    fs = 16000
+    silence_threshold = 0.01
+    consecutive_silence = 0
+    max_silence_chunks = int(1.5 / chunk_sec)
+    transcription_interval = 3.0
+    last_transcribe_time = 0.0
+    transcribed_up_to_chunks = 0
+    was_speech = False
+
     try:
-        _record(timeout, 16000, vad, audio_path)
-        if not audio_path.exists():
+        recording_start = time.monotonic()
+        while True:
+            if _stop_event.is_set():
+                break
+            if time.monotonic() - recording_start >= timeout:
+                break
+
+            chunk = sd.rec(int(fs * chunk_sec), samplerate=fs, channels=1, dtype="float32")
+            sd.wait()
+
+            if _stop_event.is_set():
+                break
+
+            all_chunks.append(chunk)
+            elapsed = time.monotonic() - recording_start
+
+            if vad:
+                rms = float(np.sqrt(np.mean(chunk ** 2)))
+                is_speech = rms >= silence_threshold
+
+                if is_speech:
+                    consecutive_silence = 0
+                    was_speech = True
+                else:
+                    consecutive_silence += 1
+
+                if was_speech and consecutive_silence >= max_silence_chunks and len(all_chunks) > transcribed_up_to_chunks:
+                    full_text = _transcribe_accumulated(model, language, all_chunks, fs)
+                    if full_text:
+                        new_text = _get_new_text(full_text, previous_text)
+                        if new_text:
+                            _type_text(new_text)
+                        previous_text = full_text
+                    transcribed_up_to_chunks = len(all_chunks)
+                    was_speech = False
+            else:
+                if elapsed - last_transcribe_time >= transcription_interval and len(all_chunks) > transcribed_up_to_chunks:
+                    full_text = _transcribe_accumulated(model, language, all_chunks, fs)
+                    if full_text:
+                        new_text = _get_new_text(full_text, previous_text)
+                        if new_text:
+                            _type_text(new_text)
+                        previous_text = full_text
+                    transcribed_up_to_chunks = len(all_chunks)
+                    last_transcribe_time = elapsed
+
+        if all_chunks and len(all_chunks) * chunk_sec < MIN_RECORDING_SEC:
             msg = "cancelled" if _stop_event.is_set() else "too short"
             send_status("idle", msg)
             return
-        send_status("transcribing", "")
-        text = _transcribe(model, language, audio_path)
-        if text:
-            _type_text(text)
-        send_status("idle", "done" if text else "silence", text)
+
+        if len(all_chunks) > transcribed_up_to_chunks:
+            full_text = _transcribe_accumulated(model, language, all_chunks, fs)
+            if full_text and full_text != previous_text:
+                new_text = _get_new_text(full_text, previous_text)
+                if new_text:
+                    _type_text(new_text)
+                previous_text = full_text
+
+        if full_text:
+            _copy_to_clipboard(full_text)
+            send_status("idle", "copied", full_text)
+        else:
+            send_status("idle", "silence", "")
     except Exception as e:
         send_status("error", f"{e!r}")
-    finally:
-        with contextlib.suppress(Exception):
-            audio_path.unlink(missing_ok=True)
 
 
 def read_settings() -> dict[str, Any]:
@@ -184,6 +233,15 @@ def read_settings() -> dict[str, Any]:
     if path.exists():
         return {**defaults, **json.loads(path.read_text())}
     return defaults
+
+
+def _check_tools() -> list[str]:
+    missing = [t for t in ["wl-copy", "wtype"] if not shutil.which(t)]
+    if not missing:
+        return []
+    if shutil.which("ydotool"):
+        return []
+    return missing
 
 
 def _is_process_alive(pid: int) -> bool:
@@ -255,8 +313,20 @@ def backend_server() -> None:
         compute_type = "int8"
 
     try:
-        send_status("idle", f"loading model ({model_size} on {device})")
+        send_status("idle", f"loading model ({model_size} on {device}, {compute_type})")
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
+
+        missing_tools = _check_tools()
+        if missing_tools:
+            send_status(
+                "error",
+                f"Missing tools: {', '.join(missing_tools)}. Install wl-clipboard and wtype.",
+            )
+            os.close(pid_fd)
+            with contextlib.suppress(Exception):
+                PID_FILE.unlink()
+            return
+
         send_status("idle", "ready")
     except Exception as e:
         send_status("error", f"Failed to load model: {e!r}")
@@ -275,8 +345,14 @@ def backend_server() -> None:
                     time.sleep(0.1)
                     continue
 
-                content = SIGNAL_FILE.read_text().strip()
-                SIGNAL_FILE.unlink()
+                tmp = SIGNAL_FILE.with_suffix(f".{os.getpid()}.{int(time.time() * 1000000)}")
+                try:
+                    SIGNAL_FILE.rename(tmp)
+                except FileNotFoundError:
+                    continue
+                content = tmp.read_text().strip()
+                with contextlib.suppress(OSError):
+                    tmp.unlink()
 
                 if content == "start":
                     cmd_start(model, language, vad, timeout)
@@ -372,3 +448,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+              

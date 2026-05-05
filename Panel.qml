@@ -33,6 +33,14 @@ Item {
       RowLayout {
         Layout.fillWidth: true
 
+        NIcon {
+          icon: "microphone"
+          color: Color.mPrimary
+          applyUiScale: false
+          Layout.preferredWidth: Style.fontSizeL * 1.2
+          Layout.preferredHeight: Style.fontSizeL * 1.2
+        }
+
         NText {
           text: pluginApi?.tr("panel.title") || "Dictation"
           pointSize: Style.fontSizeL
@@ -58,9 +66,15 @@ Item {
           Layout.topMargin: Style.marginS
           Layout.bottomMargin: Style.marginS
           onClicked: {
-            pluginApi.closePanel(pluginApi.panelOpenScreen)
+            pluginApi?.closePanel(pluginApi?.panelOpenScreen)
           }
         }
+      }
+
+      NText {
+        text: pluginApi?.tr("panel.history") || "Recent transcriptions"
+        color: Color.mOnSurfaceVariant
+        pointSize: Style.fontSizeS
       }
 
       Rectangle {
@@ -106,6 +120,15 @@ Item {
                 }
                 spacing: Style.marginS
 
+                NIcon {
+                  icon: "microphone"
+                  color: Color.mPrimary
+                  Layout.alignment: Qt.AlignTop
+                  Layout.topMargin: 2
+                  opacity: 0.5
+                  applyUiScale: false
+                }
+
                 ColumnLayout {
                   id: contentCol
                   Layout.fillWidth: true
@@ -145,7 +168,7 @@ Item {
                     onClicked: {
                       var txt = (typeof modelData === "object" ? modelData.text : modelData) || ""
                       Quickshell.execDetached(["wl-copy", txt])
-                      ToastService.showNotice("Copied to clipboard")
+                      ToastService.showNotice(pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
                     }
                   }
 
@@ -171,21 +194,44 @@ Item {
           }
         }
 
-        NText {
+        // Empty state
+        Item {
           visible: (pluginApi?.mainInstance?.history || []).length === 0
           anchors.centerIn: parent
-          z: 1
-          text: pluginApi?.tr("panel.empty") || "No transcriptions yet"
-          color: Color.mOnSurfaceVariant
-          pointSize: Style.fontSizeM
-        }
-      }
+          width: emptyColumn.implicitWidth
+          height: emptyColumn.implicitHeight
 
-      NText {
-        text: pluginApi?.tr("panel.history") || "Recent transcriptions"
-        color: Color.mOnSurfaceVariant
-        pointSize: Style.fontSizeS
-        Layout.topMargin: Style.marginS
+          ColumnLayout {
+            id: emptyColumn
+            anchors.centerIn: parent
+            spacing: Style.marginS
+
+            NIcon {
+              icon: "microphone-off"
+              color: Color.mOnSurfaceVariant
+              Layout.alignment: Qt.AlignHCenter
+              Layout.preferredWidth: Style.iconSizeXL
+              Layout.preferredHeight: Style.iconSizeXL
+              opacity: 0.4
+              applyUiScale: false
+            }
+
+            NText {
+              text: pluginApi?.tr("panel.empty") || "No transcriptions yet"
+              color: Color.mOnSurfaceVariant
+              pointSize: Style.fontSizeM
+              Layout.alignment: Qt.AlignHCenter
+            }
+
+            NText {
+              text: pluginApi?.tr("panel.emptyHint") || "Click the mic icon in the bar to start"
+              color: Color.mOnSurfaceVariant
+              pointSize: Style.fontSizeS
+              opacity: 0.6
+              Layout.alignment: Qt.AlignHCenter
+            }
+          }
+        }
       }
     }
   }

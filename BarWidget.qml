@@ -25,14 +25,13 @@ Item {
     readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screenName)
     readonly property real barFontSize: Style.getBarFontSizeForScreen(screenName)
 
-    readonly property real contentWidth: iconItem.width + Style.marginM * 2
-    readonly property real contentHeight: capsuleHeight
-
-    implicitWidth: contentWidth
-    implicitHeight: contentHeight
-
-    property real pulse: 0
     property int recordingSeconds: 0
+
+    readonly property string recordingDurationText: {
+        var m = Math.floor(recordingSeconds / 60)
+        var s = recordingSeconds % 60
+        return m + ":" + (s < 10 ? "0" : "") + s
+    }
 
     Timer {
         id: recordingTimer
@@ -43,26 +42,47 @@ Item {
         onRunningChanged: if (!running) root.recordingSeconds = 0
     }
 
-    function formatDuration(secs) {
-        var mins = Math.floor(secs / 60);
-        var s = secs % 60;
-        return mins + ":" + (s < 10 ? "0" : "") + s;
-    }
+    readonly property real contentWidth: layoutRow.implicitWidth + Style.marginM * 2
+    readonly property real contentHeight: capsuleHeight
+
+    implicitWidth: contentWidth
+    implicitHeight: contentHeight
 
     readonly property string tooltipText: {
         switch (state) {
         case "setup":
-            return pluginApi?.tr("widget.setup") || "Installing dependencies...";
+            return pluginApi?.tr("widget.setup") || "Installing dependencies..."
         case "recording":
-            return (pluginApi?.tr("widget.recording") || "Recording") + " " + formatDuration(recordingSeconds) + " \u2014 click to stop";
+            return (pluginApi?.tr("widget.recording") || "Recording")
+                + " " + recordingDurationText
+                + " \u2014 " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
         case "transcribing":
-            return pluginApi?.tr("widget.transcribing") || "Transcribing...";
+            return pluginApi?.tr("widget.transcribing") || "Transcribing..."
         case "starting":
-            return pluginApi?.tr("widget.starting") || "Starting backend...";
+            return pluginApi?.tr("widget.starting") || "Starting backend..."
         case "error":
-            return pluginApi?.tr("widget.error", {message: message}) || ("Error: " + message);
+            return (pluginApi?.tr("widget.error", {message: message}) || ("Error: " + message))
+                + "\n" + (pluginApi?.tr("widget.errorHint") || "click to retry")
         default:
-            return pluginApi?.tr("widget.idle") || "Click to start dictation";
+            return pluginApi?.tr("widget.idle") || "Click to start dictation"
+        }
+    }
+
+    property real pulse: 0
+
+    SequentialAnimation on pulse {
+        running: root.state === "recording" || root.state === "starting" || root.state === "transcribing"
+        loops: Animation.Infinite
+        onRunningChanged: if (!running) root.pulse = 0
+        NumberAnimation {
+            from: 0; to: 1
+            duration: root.state === "recording" ? 600 : 900
+            easing.type: Easing.InOutQuad
+        }
+        NumberAnimation {
+            from: 1; to: 0
+            duration: root.state === "recording" ? 600 : 900
+            easing.type: Easing.InOutQuad
         }
     }
 
@@ -74,69 +94,104 @@ Item {
         height: root.contentHeight
         color: {
             switch (root.state) {
-            case "setup":
-                return Color.mPrimaryContainer;
             case "recording":
-                return Qt.rgba(Color.mError.r * (1 - pulse * 0.4), Color.mError.g * (1 - pulse * 0.6), Color.mError.b * (1 - pulse * 0.6), Color.mError.a);
+                return Color.mErrorContainer
             case "transcribing":
-                return Qt.rgba(Color.mPrimary.r * (1 - pulse * 0.2), Color.mPrimary.g * (1 - pulse * 0.2), Color.mPrimary.b * (1 - pulse * 0.2), Color.mPrimary.a);
+                return Color.mPrimaryContainer
             case "starting":
-                return Qt.rgba(Color.mPrimaryContainer.r + (Color.mPrimary.r - Color.mPrimaryContainer.r) * pulse, Color.mPrimaryContainer.g + (Color.mPrimary.g - Color.mPrimaryContainer.g) * pulse, Color.mPrimaryContainer.b + (Color.mPrimary.b - Color.mPrimaryContainer.b) * pulse, Color.mPrimaryContainer.a);
+                return Color.mSecondaryContainer
+            case "setup":
+                return Color.mPrimaryContainer
             case "error":
-                return Color.mErrorContainer;
+                return Color.mErrorContainer
             default:
-                return mouseArea.containsMouse ? Color.mHover : Style.capsuleColor;
+                return mouseArea.containsMouse ? Color.mHover : Style.capsuleColor
             }
         }
         radius: Style.radiusL
-        border.color: Style.capsuleBorderColor
-        border.width: Style.capsuleBorderWidth
+        border.color: root.state === "recording"
+            ? Color.mError
+            : (root.state === "error" ? Color.mError : Style.capsuleBorderColor)
+        border.width: root.state === "recording" ? 2 : Style.capsuleBorderWidth
 
-        NIcon {
-            id: iconItem
-            anchors.centerIn: parent
-            icon: {
-                switch (root.state) {
-                case "setup": return "download";
-                case "recording": return "stop-circle";
-                case "transcribing": return "loader";
-                case "starting": return "loader";
-                case "error": return "alert-triangle";
-                default: return "microphone";
-                }
-            }
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
             color: {
                 switch (root.state) {
-                case "setup": return Color.mOnPrimaryContainer;
-                case "recording": return Color.mOnError;
-                case "transcribing": return Color.mOnPrimary;
-                case "starting": return Color.mOnPrimaryContainer;
-                case "error": return Color.mOnErrorContainer;
-                default: return Color.mOnSurface;
+                case "recording": return Color.mError
+                case "transcribing": return Color.mPrimary
+                case "starting": return Color.mPrimary
+                default: return "transparent"
+                }
+            }
+            opacity: {
+                switch (root.state) {
+                case "recording": return pulse * 0.25
+                case "transcribing": return pulse * 0.12
+                case "starting": return pulse * 0.18
+                default: return 0
+                }
+            }
+        }
+
+        RowLayout {
+            id: layoutRow
+            anchors.centerIn: parent
+            spacing: Style.marginS
+
+            NIcon {
+                id: iconItem
+                icon: {
+                    switch (root.state) {
+                    case "setup": return "download"
+                    case "recording": return "player-stop"
+                    case "transcribing": return "loader"
+                    case "starting": return "loader"
+                    case "error": return "alert-triangle"
+                    default:
+                        return mouseArea.containsMouse ? "microphone-filled" : "microphone"
+                    }
+                }
+                color: {
+                    switch (root.state) {
+                    case "setup": return Color.mOnPrimaryContainer
+                    case "recording": return Color.mOnErrorContainer
+                    case "transcribing": return Color.mOnPrimaryContainer
+                    case "starting": return Color.mOnSecondaryContainer
+                    case "error": return Color.mOnErrorContainer
+                    default:
+                        return mouseArea.containsMouse ? Color.mOnHover : Color.mOnSurface
+                    }
+                }
+                applyUiScale: false
+
+                RotationAnimator on rotation {
+                    running: root.state === "transcribing" || root.state === "starting"
+                    from: 0; to: 360
+                    duration: 1000
+                    loops: Animation.Infinite
+                }
+                Binding {
+                    target: iconItem
+                    property: "rotation"
+                    value: 0
+                    when: root.state !== "transcribing" && root.state !== "starting"
+                }
+
+                Behavior on color {
+                    ColorAnimation { duration: 150 }
                 }
             }
 
-            Behavior on color {
-                ColorAnimation { duration: 150 }
+            NText {
+                visible: root.state === "recording"
+                text: root.recordingDurationText
+                color: Color.mOnErrorContainer
+                pointSize: root.barFontSize
+                applyUiScale: false
+                font.weight: Font.Medium
             }
-        }
-    }
-
-    SequentialAnimation on pulse {
-        running: root.state === "setup" || root.state === "recording" || root.state === "starting" || root.state === "transcribing"
-        loops: Animation.Infinite
-        onRunningChanged: if (!running) root.pulse = 0
-        NumberAnimation {
-            from: 0
-            to: 1
-            duration: root.state === "recording" ? 600 : 800
-            easing.type: Easing.InOutQuad
-        }
-        NumberAnimation {
-            from: 1
-            to: 0
-            duration: root.state === "recording" ? 600 : 800
-            easing.type: Easing.InOutQuad
         }
     }
 
@@ -145,13 +200,50 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-        onEntered: TooltipService.show(root, root.tooltipText, BarService.getTooltipDirection())
+        onEntered: TooltipService.show(root, root.tooltipText, BarService.getTooltipDirection(screenName))
         onExited: TooltipService.hide()
 
-        onClicked: {
+        onClicked: mouse => {
+            if (mouse.button === Qt.RightButton) {
+                PanelService.showContextMenu(contextMenu, root, screen)
+                return
+            }
             if (mainInstance) {
-                mainInstance.toggleRecording();
+                mainInstance.toggleRecording()
+            }
+        }
+    }
+
+    NPopupContextMenu {
+        id: contextMenu
+
+        model: [
+            {
+                "label": pluginApi?.tr("context.toggle") || "Toggle Dictation",
+                "action": "toggle-dictation",
+                "icon": "microphone"
+            },
+            {
+                "label": pluginApi?.tr("context.settings") || "Settings",
+                "action": "open-settings",
+                "icon": "settings"
+            }
+        ]
+
+        onTriggered: action => {
+            contextMenu.close()
+            PanelService.closeContextMenu(screen)
+
+            if (action === "toggle-dictation") {
+                if (mainInstance) {
+                    mainInstance.toggleRecording()
+                }
+            } else if (action === "open-settings") {
+                if (pluginApi?.manifest) {
+                    BarService.openPluginSettings(screen, pluginApi.manifest)
+                }
             }
         }
     }

@@ -19,13 +19,6 @@ A Noctalia Shell plugin that provides local voice dictation using [faster-whispe
 - `wl-copy` for clipboard integration
 - (Optional) NVIDIA GPU + CUDA for faster transcription
 
-## Installation
-
-```bash
-cd ~/.config/noctalia/plugins/
-git clone https://github.com/arafays/noctalia-dictation dictation
-```
-
 Then restart Noctalia and enable the plugin in Settings > Plugins.
 
 ## Usage

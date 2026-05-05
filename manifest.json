@@ -1,7 +1,8 @@
 {
+  "key": "dictation",
   "id": "dictation",
   "name": "Dictation",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "minNoctaliaVersion": "4.0.0",
   "author": "Abdul Rafay Shaikh",
   "license": "MIT",
