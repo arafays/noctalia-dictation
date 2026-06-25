@@ -61,7 +61,8 @@ Item {
             return (pluginApi?.tr("widget.recording") || "Listening")
                 + " — " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
         case "transcribing":
-            return pluginApi?.tr("widget.transcribing") || "Transcribing..."
+            return (pluginApi?.tr("widget.transcribing") || "Transcribing...")
+                + " — " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
         case "starting":
             return pluginApi?.tr("widget.starting") || "Starting backend..."
         case "error":

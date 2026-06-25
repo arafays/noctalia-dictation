@@ -25,6 +25,17 @@ PanelWindow {
         pluginApi?.pluginSettings?.overlayPosition ||
         pluginApi?.manifest?.metadata?.defaultSettings?.overlayPosition ||
         "bottom"
+    readonly property string stopHotkeyHint:
+        pluginApi?.pluginSettings?.stopHotkeyHint ||
+        pluginApi?.manifest?.metadata?.defaultSettings?.stopHotkeyHint ||
+        ""
+    readonly property string ipcStopCmd: "qs -c noctalia-shell ipc call plugin:dictation stop"
+    readonly property string stopHintText: {
+        if (stopHotkeyHint.length > 0) {
+            return stopHotkeyHint
+        }
+        return pluginApi?.tr("overlay.stopHintDefault") || "Bind stop in Settings"
+    }
 
     readonly property bool active: (mainInstance?.backendState === "recording"
             || mainInstance?.backendState === "transcribing") && showOverlay
@@ -134,10 +145,42 @@ PanelWindow {
 
                     Item { Layout.fillWidth: true }
 
-                    NText {
-                        text: pluginApi?.tr("overlay.hint") || "Hotkey or click mic to stop"
-                        color: Color.mOnSurfaceVariant
-                        pointSize: Style.fontSizeXS
+                    ColumnLayout {
+                        spacing: 0
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.maximumWidth: cardBackground.width * 0.45
+
+                        NText {
+                            text: root.stopHintText
+                            color: Color.mOnSurfaceVariant
+                            pointSize: Style.fontSizeXS
+                            horizontalAlignment: Text.AlignRight
+                            Layout.fillWidth: true
+                        }
+
+                        NText {
+                            visible: root.stopHotkeyHint.length === 0
+                            text: root.ipcStopCmd
+                            color: Color.mOnSurfaceVariant
+                            pointSize: Style.fontSizeXS
+                            font.family: "monospace"
+                            opacity: 0.85
+                            horizontalAlignment: Text.AlignRight
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    NIconButton {
+                        icon: "player-stop"
+                        baseSize: Style.iconSizeS
+                        tooltipText: (pluginApi?.tr("overlay.stop") || "Stop dictation")
+                            + (root.stopHotkeyHint.length > 0 ? (" (" + root.stopHotkeyHint + ")") : "")
+                        onClicked: {
+                            if (mainInstance) {
+                                mainInstance.stopRecording()
+                            }
+                        }
                     }
                 }
 

@@ -254,18 +254,24 @@ Item {
     Quickshell.execDetached(pythonCmd(["stop"]))
   }
 
+  function sessionActive() {
+    return backendState === "recording" || backendState === "transcribing"
+  }
+
   function toggleRecording() {
-    if (backendState === "recording") {
+    if (sessionActive()) {
+      pendingStart = false
+      _pendingStartTimeout.stop()
       stopRecording()
-    } else {
-      pendingStart = true
-      _pendingStartTimeout.restart()
-      ensureBackend()
-      if (backendState === "idle") {
-        pendingStart = false
-        _pendingStartTimeout.stop()
-        startRecording()
-      }
+      return
+    }
+    pendingStart = true
+    _pendingStartTimeout.restart()
+    ensureBackend()
+    if (backendState === "idle") {
+      pendingStart = false
+      _pendingStartTimeout.stop()
+      startRecording()
     }
   }
 

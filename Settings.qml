@@ -113,6 +113,16 @@ ColumnLayout {
     }
   }
 
+  NTextInput {
+    Layout.fillWidth: true
+    label: pluginApi?.tr("settings.hotkeys.stopHintLabel") || "Overlay stop key label"
+    description: pluginApi?.tr("settings.hotkeys.stopHintDesc")
+        || "Optional label shown on the live overlay (e.g. Super+Shift+D). Leave empty to show the IPC stop command."
+    placeholderText: "Super+Shift+D"
+    text: root.editStopHotkeyHint
+    onTextChanged: root.editStopHotkeyHint = text
+  }
+
   NDivider {
     Layout.fillWidth: true
     Layout.topMargin: Style.marginS
@@ -181,6 +191,11 @@ ColumnLayout {
     pluginApi?.pluginSettings?.overlayPosition ||
     _defaults?.overlayPosition ||
     "bottom"
+
+  property string editStopHotkeyHint:
+    pluginApi?.pluginSettings?.stopHotkeyHint ||
+    _defaults?.stopHotkeyHint ||
+    ""
 
   // Backend status indicator
   Rectangle {
@@ -595,6 +610,7 @@ ColumnLayout {
     pluginApi.pluginSettings.showPartialTranscript = root.editShowPartial
     pluginApi.pluginSettings.autoType = root.editAutoType
     pluginApi.pluginSettings.overlayPosition = root.editOverlayPosition
+    pluginApi.pluginSettings.stopHotkeyHint = root.editStopHotkeyHint.trim()
     pluginApi.pluginSettings.vadEnabled = root.editVadEnabled
     pluginApi.pluginSettings.vadThreshold = Math.max(0.1, Math.min(0.9, parseFloat(root.editVadThreshold) || 0.4))
     pluginApi.saveSettings()
