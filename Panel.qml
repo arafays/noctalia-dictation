@@ -79,6 +79,46 @@ Item {
 
       Rectangle {
         Layout.fillWidth: true
+        visible: pluginApi?.mainInstance?.backendState === "recording"
+        color: Color.mErrorContainer
+        radius: Style.radiusM
+        implicitHeight: liveSessionCol.implicitHeight + Style.marginM * 2
+        height: implicitHeight
+
+        ColumnLayout {
+          id: liveSessionCol
+          anchors {
+            fill: parent
+            margins: Style.marginM
+          }
+          spacing: Style.marginXS
+
+          NText {
+            text: pluginApi?.tr("panel.liveSession") || "Live session"
+            color: Color.mOnErrorContainer
+            font.weight: Font.Medium
+          }
+
+          NText {
+            Layout.fillWidth: true
+            text: {
+              var mi = pluginApi?.mainInstance
+              var committed = mi?.liveTranscript || ""
+              var partial = mi?.partialTranscript || ""
+              if (committed && partial) return committed + " " + partial
+              return committed || partial || (pluginApi?.tr("panel.listening") || "Listening...")
+            }
+            color: Color.mOnErrorContainer
+            pointSize: Style.fontSizeM
+            wrapMode: Text.WordWrap
+            maximumLineCount: 4
+            elide: Text.ElideRight
+          }
+        }
+      }
+
+      Rectangle {
+        Layout.fillWidth: true
         Layout.fillHeight: true
         color: Color.mSurfaceVariant
         radius: Style.radiusL

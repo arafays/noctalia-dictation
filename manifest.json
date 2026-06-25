@@ -2,12 +2,12 @@
   "key": "dictation",
   "id": "dictation",
   "name": "Dictation",
-  "version": "0.0.3",
+  "version": "0.2.0",
   "minNoctaliaVersion": "4.0.0",
   "author": "Abdul Rafay Shaikh",
   "license": "MIT",
   "repository": "https://github.com/arafays/noctalia-dictation",
-  "description": "Local voice dictation using faster-whisper. Click the mic icon to start speaking — transcribed text appears in your focused input field.",
+  "description": "Local offline dictation with sherpa-onnx two-pass streaming (Zipformer live + Whisper/SenseVoice finals). Live overlay, wtype injection, session clipboard.",
   "entryPoints": {
     "barWidget": "BarWidget.qml",
     "panel": "Panel.qml",
@@ -19,12 +19,11 @@
   },
   "metadata": {
     "defaultSettings": {
-      "model": "base",
+      "engine": "auto",
+      "sherpaProfile": "auto",
+      "sherpaProvider": "auto",
       "language": "auto",
-      "device": "auto",
-      "computeType": "int8",
-      "vadEnabled": true,
-      "recordingTimeout": 30
+      "recordingTimeout": 0
     }
   }
 }

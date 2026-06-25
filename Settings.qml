@@ -10,42 +10,62 @@ ColumnLayout {
 
   spacing: Style.marginM
 
-  readonly property var _modelKeys: ["tiny", "base", "small", "medium", "large-v3"]
+  RowLayout {
+    Layout.fillWidth: true
+    spacing: Style.marginM
+
+    NIcon {
+      icon: "microphone"
+      pointSize: Style.fontSizeXL
+      color: Color.mPrimary
+    }
+
+    NText {
+      text: pluginApi?.tr("settings.title") || "Dictation Settings"
+      pointSize: Style.fontSizeL
+      font.weight: Font.Medium
+      color: Color.mOnSurface
+    }
+
+    Item { Layout.fillWidth: true }
+  }
+
+  NDivider {
+    Layout.fillWidth: true
+  }
+
   readonly property var _languageKeys: ["auto", "en", "es", "fr", "de", "it", "pt", "nl", "pl", "ru", "zh", "ja", "ko", "ar", "hi", "tr", "vi", "th", "id", "uk"]
-  readonly property var _deviceKeys: ["auto", "cpu", "cuda"]
-  readonly property var _computeTypeKeys: ["int8", "float16", "float32"]
+
+  readonly property var _engineKeys: ["auto", "sherpa"]
+  readonly property var _sherpaProfileKeys: ["auto", "english", "multilingual"]
+  readonly property var _sherpaProviderKeys: ["auto", "cpu", "cuda"]
 
   readonly property var _defaults: pluginApi?.manifest?.metadata?.defaultSettings
 
-  property string editModel:
-    pluginApi?.pluginSettings?.model ||
-    _defaults?.model ||
-    "base"
+  property string editEngine:
+    pluginApi?.pluginSettings?.engine ||
+    _defaults?.engine ||
+    "auto"
+
+  property string editSherpaProfile:
+    pluginApi?.pluginSettings?.sherpaProfile ||
+    _defaults?.sherpaProfile ||
+    "auto"
+
+  property string editSherpaProvider:
+    pluginApi?.pluginSettings?.sherpaProvider ||
+    _defaults?.sherpaProvider ||
+    "auto"
 
   property string editLanguage:
     pluginApi?.pluginSettings?.language ||
     _defaults?.language ||
     "auto"
 
-  property string editDevice:
-    pluginApi?.pluginSettings?.device ||
-    _defaults?.device ||
-    "auto"
-
-  property string editComputeType:
-    pluginApi?.pluginSettings?.computeType ||
-    _defaults?.computeType ||
-    "int8"
-
-  property bool editVad:
-    pluginApi?.pluginSettings?.vadEnabled ??
-    _defaults?.vadEnabled ??
-    true
-
   property int editTimeout:
-    pluginApi?.pluginSettings?.recordingTimeout ||
-    _defaults?.recordingTimeout ||
-    30
+    pluginApi?.pluginSettings?.recordingTimeout ??
+    _defaults?.recordingTimeout ??
+    0
 
   // Backend status indicator
   Rectangle {
@@ -60,7 +80,6 @@ ColumnLayout {
       case "transcribing": return Color.mPrimaryContainer
       case "starting": return Color.mSecondaryContainer
       case "setup": return Color.mSecondaryContainer
-      case "stopping": return Color.mSecondaryContainer
       default: return Color.mSurfaceVariant
       }
     }
@@ -182,21 +201,65 @@ ColumnLayout {
     Layout.fillWidth: true
   }
 
-  // Model
   NLabel {
-    label: pluginApi?.tr("settings.model") || "Whisper model"
-    description: pluginApi?.tr("settings.modelDesc") || "Larger models are more accurate but slower"
+    label: pluginApi?.tr("settings.engine") || "Speech engine"
+    description: pluginApi?.tr("settings.engineDesc") || "sherpa-onnx two-pass streaming (Zipformer live + Whisper/SenseVoice finals)."
   }
 
   NComboBox {
     Layout.fillWidth: true
-    model: ["Tiny", "Base", "Small", "Medium", "Large v3"]
-    currentIndex: Math.max(0, root._modelKeys.indexOf(root.editModel))
+    model: ["Auto (recommended)", "sherpa-onnx two-pass"]
+    currentIndex: Math.max(0, root._engineKeys.indexOf(root.editEngine))
     onCurrentIndexChanged: {
-      if (currentIndex >= 0 && currentIndex < root._modelKeys.length) {
-        root.editModel = root._modelKeys[currentIndex]
+      if (currentIndex >= 0 && currentIndex < root._engineKeys.length) {
+        root.editEngine = root._engineKeys[currentIndex]
       }
     }
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.sherpaProfile") || "sherpa model profile"
+    description: pluginApi?.tr("settings.sherpaProfileDesc") || "English uses Zipformer+Whisper. Multilingual adds SenseVoice for better non-English accuracy."
+    Layout.topMargin: Style.marginS
+  }
+
+  NComboBox {
+    Layout.fillWidth: true
+    model: ["Auto from language", "English", "Multilingual"]
+    currentIndex: Math.max(0, root._sherpaProfileKeys.indexOf(root.editSherpaProfile))
+    onCurrentIndexChanged: {
+      if (currentIndex >= 0 && currentIndex < root._sherpaProfileKeys.length) {
+        root.editSherpaProfile = root._sherpaProfileKeys[currentIndex]
+      }
+    }
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.sherpaProvider") || "sherpa compute provider"
+    description: pluginApi?.tr("settings.sherpaProviderDesc") || "ONNX Runtime provider for sherpa-onnx"
+    Layout.topMargin: Style.marginS
+  }
+
+  NComboBox {
+    Layout.fillWidth: true
+    model: ["Auto", "CPU", "CUDA"]
+    currentIndex: Math.max(0, root._sherpaProviderKeys.indexOf(root.editSherpaProvider))
+    onCurrentIndexChanged: {
+      if (currentIndex >= 0 && currentIndex < root._sherpaProviderKeys.length) {
+        root.editSherpaProvider = root._sherpaProviderKeys[currentIndex]
+      }
+    }
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.downloadModels") || "Model download"
+    description: pluginApi?.tr("settings.downloadModelsDesc") || "Run download_models.sh english (or multilingual) once after install"
+    Layout.topMargin: Style.marginS
+  }
+
+  NDivider {
+    Layout.fillWidth: true
+    Layout.topMargin: Style.marginS
   }
 
   // Language
@@ -217,68 +280,23 @@ ColumnLayout {
     }
   }
 
-  // Device
-  NLabel {
-    label: pluginApi?.tr("settings.device") || "Compute device"
-    description: pluginApi?.tr("settings.deviceDesc") || "Auto picks CUDA if available"
-    Layout.topMargin: Style.marginS
-  }
-
-  NComboBox {
-    Layout.fillWidth: true
-    model: ["Auto", "CPU", "CUDA"]
-    currentIndex: Math.max(0, root._deviceKeys.indexOf(root.editDevice))
-    onCurrentIndexChanged: {
-      if (currentIndex >= 0 && currentIndex < root._deviceKeys.length) {
-        root.editDevice = root._deviceKeys[currentIndex]
-      }
-    }
-  }
-
-  // Compute type
-  NLabel {
-    label: pluginApi?.tr("settings.computeType") || "Compute type"
-    description: pluginApi?.tr("settings.computeTypeDesc") || "int8 is fastest on CPU, float16 for GPU"
-    Layout.topMargin: Style.marginS
-  }
-
-  NComboBox {
-    Layout.fillWidth: true
-    model: ["INT8", "Float 16", "Float 32"]
-    currentIndex: Math.max(0, root._computeTypeKeys.indexOf(root.editComputeType))
-    onCurrentIndexChanged: {
-      if (currentIndex >= 0 && currentIndex < root._computeTypeKeys.length) {
-        root.editComputeType = root._computeTypeKeys[currentIndex]
-      }
-    }
-  }
-
   NDivider {
     Layout.fillWidth: true
     Layout.topMargin: Style.marginS
     Layout.bottomMargin: Style.marginS
   }
 
-  // VAD toggle
-  NToggle {
-    Layout.fillWidth: true
-    label: pluginApi?.tr("settings.vad") || "Voice activity detection"
-    description: pluginApi?.tr("settings.vadDesc") || "Automatically stop recording during silence"
-    checked: root.editVad
-    onCheckedChanged: root.editVad = checked
-  }
-
-  // Recording timeout
+  // Optional safety cap (0 = unlimited, session ends on hotkey/mic toggle only)
   NLabel {
-    label: pluginApi?.tr("settings.timeout") || "Recording timeout"
-    description: pluginApi?.tr("settings.timeoutDesc") || "Maximum seconds to record before auto-stop"
+    label: pluginApi?.tr("settings.timeout") || "Safety timeout"
+    description: pluginApi?.tr("settings.timeoutDesc") || "Optional max seconds (0 = unlimited). Sessions stop only via hotkey or mic click."
     Layout.topMargin: Style.marginS
   }
 
   NSpinBox {
     Layout.fillWidth: true
-    from: 5
-    to: 300
+    from: 0
+    to: 3600
     value: root.editTimeout
     onValueChanged: root.editTimeout = value
   }
@@ -326,19 +344,6 @@ ColumnLayout {
       }
     }
 
-    NButton {
-      text: pluginApi?.tr("settings.restartBackend") || "Restart"
-      outlined: true
-      visible: {
-        var st = pluginApi?.mainInstance?.backendState || "stopped"
-        return st === "idle" || st === "error"
-      }
-      onClicked: {
-        if (pluginApi?.mainInstance) {
-          pluginApi.mainInstance.restartBackend()
-        }
-      }
-    }
   }
 
   NLabel {
@@ -394,12 +399,11 @@ ColumnLayout {
       return
     }
 
-    pluginApi.pluginSettings.model = root.editModel
+    pluginApi.pluginSettings.engine = root.editEngine
+    pluginApi.pluginSettings.sherpaProfile = root.editSherpaProfile
+    pluginApi.pluginSettings.sherpaProvider = root.editSherpaProvider
     pluginApi.pluginSettings.language = root.editLanguage
-    pluginApi.pluginSettings.device = root.editDevice
-    pluginApi.pluginSettings.computeType = root.editComputeType
-    pluginApi.pluginSettings.vadEnabled = root.editVad
-    pluginApi.pluginSettings.recordingTimeout = Math.max(5, Math.min(300, parseInt(root.editTimeout, 10) || 30))
+    pluginApi.pluginSettings.recordingTimeout = Math.max(0, Math.min(3600, parseInt(root.editTimeout, 10) || 0))
     pluginApi.saveSettings()
 
     if (pluginApi?.mainInstance) {

@@ -11,6 +11,8 @@ Item {
   property var pluginApi: null
   property string backendState: "stopped"
   property string backendMessage: ""
+  property string liveTranscript: ""
+  property string partialTranscript: ""
   property var history: []
   property bool pendingStart: false
   property int _retryCount: 0
@@ -31,6 +33,29 @@ Item {
   property bool _launchingBackend: false
   property string backendStdout: ""
   property string backendStderr: ""
+  property bool _useSystemPython: false
+
+  Process {
+    id: _probeProcess
+    command: ["sh", "-c", "python3 -c 'import sherpa_onnx, sounddevice, numpy' 2>/dev/null && echo system-python-ready"]
+
+    stdout: StdioCollector {
+      id: _probeStdout
+      onStreamFinished: {
+        if (text.trim() === "system-python-ready") {
+          root._useSystemPython = true
+          root._venvReady = true
+          Logger.i("Dictation", "system Python has required packages, using it directly")
+        } else {
+          root._useSystemPython = false
+          Logger.i("Dictation", "system Python missing packages, will use venv")
+        }
+        // Kill any orphaned backend from previous session now that we know which interpreter to use
+        root.cleanupOrphanedBackend()
+        root._startupDelayTimer.start()
+      }
+    }
+  }
 
   Process {
     id: _setupProcess
@@ -159,7 +184,8 @@ Item {
   }
 
   function pythonCmd(args) {
-    return [venvPython, backendScript].concat(args)
+    var py = root._useSystemPython ? "python3" : venvPython
+    return [py, backendScript].concat(args)
   }
 
   function checkVenv() {
@@ -219,6 +245,8 @@ Item {
       Logger.w("Dictation", "Cannot start recording: backend is", backendState)
       return
     }
+    liveTranscript = ""
+    partialTranscript = ""
     Quickshell.execDetached(pythonCmd(["start"]))
   }
 
@@ -327,7 +355,27 @@ Item {
         Logger.d("Dictation", "IPC setStatus:", JSON.stringify(data))
         if (data.state !== undefined) {
           root.backendState = data.state
-          root.backendMessage = data.message || ""
+          if (data.state === "idle" && data.message === "ready" && data.engine) {
+            root.backendMessage = data.engine
+          } else {
+            root.backendMessage = data.message || ""
+          }
+
+          if (data.engine !== undefined && data.engine.length > 0 && data.state === "recording") {
+            root.backendMessage = data.engine
+          }
+
+          if (data.liveTranscript !== undefined) {
+            root.liveTranscript = data.liveTranscript
+          }
+          if (data.partialTranscript !== undefined) {
+            root.partialTranscript = data.partialTranscript
+          }
+
+          if (data.state === "idle" || data.state === "error" || data.state === "stopped") {
+            root.liveTranscript = ""
+            root.partialTranscript = ""
+          }
 
           if (data.state === "error" && data.message) {
             root.sendErrorNotification(data.message)
@@ -349,7 +397,7 @@ Item {
         if (data.state === "idle" && data.message === "copied" && data.text && data.text.length > 0) {
           root.addHistoryEntry(data.text)
           ToastService.showNotice(pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
-        } else if (data.state !== "recording" && data.text && data.text.length > 0) {
+        } else if (data.state === "idle" && data.text && data.text.length > 0 && data.message !== "copied") {
           root.addHistoryEntry(data.text)
         }
       } catch (e) {
@@ -373,14 +421,25 @@ Item {
     }
   }
 
+  Variants {
+    model: Quickshell.screens
+
+    delegate: TranscriptOverlay {
+      required property var modelData
+
+      screen: modelData
+      pluginApi: root.pluginApi
+      mainInstance: root
+    }
+  }
+
   Component.onCompleted: {
     if (pluginApi) {
       loadHistory()
     }
     Logger.i("Dictation", "plugin loaded, pluginDir:", pluginDir)
     Logger.i("Dictation", "backendScript:", backendScript, "venvPython:", venvPython)
-    // Kill any orphaned backend from previous session, then start fresh
-    cleanupOrphanedBackend()
-    _startupDelayTimer.start()
+    // Probe system Python first; cleanup and backend launch happen in the probe callback
+    _probeProcess.running = true
   }
 }

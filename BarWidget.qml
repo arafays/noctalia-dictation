@@ -23,24 +23,6 @@ Item {
     readonly property string barPosition: Settings.getBarPositionForScreen(screenName)
     readonly property bool isBarVertical: barPosition === "left" || barPosition === "right"
     readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screenName)
-    readonly property real barFontSize: Style.getBarFontSizeForScreen(screenName)
-
-    property int recordingSeconds: 0
-
-    readonly property string recordingDurationText: {
-        var m = Math.floor(recordingSeconds / 60)
-        var s = recordingSeconds % 60
-        return m + ":" + (s < 10 ? "0" : "") + s
-    }
-
-    Timer {
-        id: recordingTimer
-        interval: 1000
-        running: root.state === "recording"
-        repeat: true
-        onTriggered: root.recordingSeconds++
-        onRunningChanged: if (!running) root.recordingSeconds = 0
-    }
 
     readonly property real contentWidth: layoutRow.implicitWidth + Style.marginM * 2
     readonly property real contentHeight: capsuleHeight
@@ -53,9 +35,8 @@ Item {
         case "setup":
             return pluginApi?.tr("widget.setup") || "Installing dependencies..."
         case "recording":
-            return (pluginApi?.tr("widget.recording") || "Recording")
-                + " " + recordingDurationText
-                + " \u2014 " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
+            return (pluginApi?.tr("widget.recording") || "Listening")
+                + " — " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
         case "transcribing":
             return pluginApi?.tr("widget.transcribing") || "Transcribing..."
         case "starting":
@@ -145,12 +126,12 @@ Item {
                 icon: {
                     switch (root.state) {
                     case "setup": return "download"
-                    case "recording": return "player-stop"
+                    case "recording": return "player-record-filled"
                     case "transcribing": return "loader"
                     case "starting": return "loader"
-                    case "error": return "alert-triangle"
+                    case "error": return "alert-triangle-filled"
                     default:
-                        return mouseArea.containsMouse ? "microphone-filled" : "microphone"
+                        return "microphone"
                     }
                 }
                 color: {
@@ -167,7 +148,7 @@ Item {
                 applyUiScale: false
 
                 RotationAnimator on rotation {
-                    running: root.state === "transcribing" || root.state === "starting"
+                    running: root.state === "starting" || root.state === "transcribing"
                     from: 0; to: 360
                     duration: 1000
                     loops: Animation.Infinite
@@ -176,21 +157,12 @@ Item {
                     target: iconItem
                     property: "rotation"
                     value: 0
-                    when: root.state !== "transcribing" && root.state !== "starting"
+                    when: root.state !== "starting" && root.state !== "transcribing"
                 }
 
                 Behavior on color {
                     ColorAnimation { duration: 150 }
                 }
-            }
-
-            NText {
-                visible: root.state === "recording"
-                text: root.recordingDurationText
-                color: Color.mOnErrorContainer
-                pointSize: root.barFontSize
-                applyUiScale: false
-                font.weight: Font.Medium
             }
         }
     }
