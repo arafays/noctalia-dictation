@@ -42,6 +42,17 @@
   },
   "settings": {
     "title": "Dictation Settings",
+    "hotkeys": {
+      "title": "Keyboard shortcuts",
+      "desc": "Dictation does not register global hotkeys itself. Bind the IPC commands below in your compositor (Niri, Hyprland, etc.). The bar mic button always toggles recording.",
+      "toggle": "Toggle session",
+      "start": "Start",
+      "stop": "Stop",
+      "example": "Example keybind",
+      "niriExampleDesc": "Add to your Niri config (e.g. ~/.config/niri/config.kdl):",
+      "hyprExampleDesc": "Add to your Hyprland config (e.g. ~/.config/hypr/hyprland.conf):",
+      "genericExampleDesc": "Bind this command in your compositor's keybind config:"
+    },
     "behavior": "Behavior",
     "behaviorDesc": "Overlay, typing, and noise gating",
     "showOverlay": "Show live overlay",

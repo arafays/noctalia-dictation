@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import qs.Widgets
+import qs.Services.Compositor
 
 ColumnLayout {
   id: root
@@ -32,6 +33,90 @@ ColumnLayout {
 
   NDivider {
     Layout.fillWidth: true
+  }
+
+  readonly property string ipcToggleCmd: "qs -c noctalia-shell ipc call plugin:dictation toggle"
+  readonly property string ipcStartCmd: "qs -c noctalia-shell ipc call plugin:dictation start"
+  readonly property string ipcStopCmd: "qs -c noctalia-shell ipc call plugin:dictation stop"
+
+  readonly property string compositorExample: {
+    if (CompositorService.isNiri) {
+      return 'bind=Mod+Shift+D { spawn-sh "' + ipcToggleCmd + '"; }'
+    }
+    if (CompositorService.isHyprland) {
+      return "bind = SUPER SHIFT, D, exec, " + ipcToggleCmd
+    }
+    return ipcToggleCmd
+  }
+
+  readonly property string compositorExampleDesc: {
+    if (CompositorService.isNiri) {
+      return pluginApi?.tr("settings.hotkeys.niriExampleDesc")
+          || "Add to your Niri config (e.g. ~/.config/niri/config.kdl):"
+    }
+    if (CompositorService.isHyprland) {
+      return pluginApi?.tr("settings.hotkeys.hyprExampleDesc")
+          || "Add to your Hyprland config (e.g. ~/.config/hypr/hyprland.conf):"
+    }
+    return pluginApi?.tr("settings.hotkeys.genericExampleDesc")
+        || "Bind this command in your compositor's keybind config:"
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.hotkeys.title") || "Keyboard shortcuts"
+    description: pluginApi?.tr("settings.hotkeys.desc")
+        || "Dictation does not register global hotkeys itself. Bind the IPC commands below in your compositor (Niri, Hyprland, etc.). The bar mic button always toggles recording."
+    Layout.topMargin: Style.marginS
+  }
+
+  Rectangle {
+    Layout.fillWidth: true
+    Layout.preferredHeight: hotkeysCode.implicitHeight + Style.marginS * 2
+    color: Color.mSurfaceVariant
+    radius: Style.radiusM
+
+    NText {
+      id: hotkeysCode
+      anchors.fill: parent
+      anchors.margins: Style.marginS
+      text: (pluginApi?.tr("settings.hotkeys.toggle") || "Toggle session") + ":\n  " + root.ipcToggleCmd
+          + "\n\n" + (pluginApi?.tr("settings.hotkeys.start") || "Start") + ":\n  " + root.ipcStartCmd
+          + "\n\n" + (pluginApi?.tr("settings.hotkeys.stop") || "Stop") + ":\n  " + root.ipcStopCmd
+      color: Color.mOnSurfaceVariant
+      pointSize: Style.fontSizeXS
+      font.family: "monospace"
+      wrapMode: Text.Wrap
+    }
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.hotkeys.example") || "Example keybind"
+    description: root.compositorExampleDesc
+    Layout.topMargin: Style.marginS
+  }
+
+  Rectangle {
+    Layout.fillWidth: true
+    Layout.preferredHeight: compositorExampleCode.implicitHeight + Style.marginS * 2
+    color: Color.mSurfaceVariant
+    radius: Style.radiusM
+
+    NText {
+      id: compositorExampleCode
+      anchors.fill: parent
+      anchors.margins: Style.marginS
+      text: root.compositorExample
+      color: Color.mOnSurfaceVariant
+      pointSize: Style.fontSizeXS
+      font.family: "monospace"
+      wrapMode: Text.Wrap
+    }
+  }
+
+  NDivider {
+    Layout.fillWidth: true
+    Layout.topMargin: Style.marginS
+    Layout.bottomMargin: Style.marginS
   }
 
   readonly property var _languageKeys: ["auto", "en", "es", "fr", "de", "it", "pt", "nl", "pl", "ru", "zh", "ja", "ko", "ar", "hi", "tr", "vi", "th", "id", "uk"]
