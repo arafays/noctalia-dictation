@@ -51,9 +51,9 @@ Plugin enable/disable state and configured sources are stored in **`~/.config/no
 
 ## Installation
 
-### 1. Copy or symlink into the Noctalia plugins directory
+### 1. Install into the Noctalia plugins directory
 
-**Recommended — copy:**
+**End users — copy from GitHub:**
 
 ```bash
 git clone https://github.com/arafays/noctalia-dictation.git
@@ -61,13 +61,15 @@ cp -r noctalia-dictation ~/.config/noctalia/plugins/dictation
 cd ~/.config/noctalia/plugins/dictation
 ```
 
-**Development — symlink** (edits in your clone reload with hot reload; see [Development](#development)):
+**Developers — symlink your clone** (edits apply instantly; see [Development](#development)):
 
 ```bash
 git clone https://github.com/arafays/noctalia-dictation.git ~/projects/noctalia-dictation
 ln -sfn ~/projects/noctalia-dictation ~/.config/noctalia/plugins/dictation
-cd ~/.config/noctalia/plugins/dictation
+cd ~/projects/noctalia-dictation   # work in the clone, not ~/.config
 ```
+
+Do not copy or rsync over an existing dev symlink — Noctalia reads the symlink target directly.
 
 ### 2. Install Python dependencies
 
@@ -162,13 +164,17 @@ All assets are downloaded from [sherpa-onnx ASR model releases](https://github.c
 
 ## Development
 
-**Recommended workflow:** keep a git clone (e.g. `~/projects/noctalia-dictation`) and symlink it into Noctalia so edits are instant:
+**Canonical workflow:** keep a git clone (e.g. `~/projects/noctalia-dictation`) and symlink it into Noctalia — edit the clone, not `~/.config`:
 
 ```bash
 ln -sfn ~/projects/noctalia-dictation ~/.config/noctalia/plugins/dictation
 ```
 
-`settings.json`, `models/`, and `.venv/` stay in the clone (first two are gitignored). Run `./setup.sh` and `./download_models.sh english` once per machine. Chezmoi users: the dotfiles repo only manages the symlink (`symlink_dictation`), not plugin sources.
+- `settings.json`, `models/`, and `.venv/` live in the clone (`settings.json` and `models/` are gitignored)
+- Run `./setup.sh` and `./download_models.sh english` once per machine in the clone
+- Reload after code changes: development mode in Noctalia, or disable/re-enable the plugin
+- **Chezmoi:** do not store plugin sources in dotfiles — only a `symlink_dictation` file pointing at your clone path
+- **AI agents / automation:** never `cp -r` or `rsync` this repo into `~/.config` when the dev symlink exists; edit the repo and reload
 
 ```bash
 NOCTALIA_DEBUG=1 qs -c noctalia-shell   # optional: verbose logs
@@ -215,6 +221,11 @@ cat ~/.config/noctalia/plugins/dictation/settings.json
 ```
 
 ## Changelog
+
+### v0.4.3
+
+- Document symlink-first dev workflow; end-user install remains copy-from-GitHub
+- Chezmoi: symlink target only (`symlink_dictation`), not full plugin sources
 
 ### v0.4.0
 
