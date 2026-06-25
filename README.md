@@ -222,6 +222,10 @@ cat ~/.config/noctalia/plugins/dictation/settings.json
 
 ## Changelog
 
+### v0.4.4
+
+- Retry backend after engine load failure
+
 ### v0.4.3
 
 - Document symlink-first dev workflow; end-user install remains copy-from-GitHub
