@@ -46,10 +46,12 @@ def read_settings() -> dict[str, Any]:
         "recordingTimeout": 0,
         "sherpaProfile": "auto",
         "sherpaProvider": "auto",
+        "autoType": True,
+        "vadEnabled": True,
+        "vadThreshold": 0.4,
     }
     if path.exists():
         stored = json.loads(path.read_text())
-        stored.pop("vadEnabled", None)
         return {**defaults, **stored}
     return defaults
 
@@ -79,6 +81,9 @@ def load_engine(settings: dict[str, Any]) -> tuple[Any, str, str]:
         profile=profile,
         provider=provider,
         language=settings.get("language", "auto"),
+        vad_enabled=bool(settings.get("vadEnabled", True)),
+        vad_threshold=float(settings.get("vadThreshold", 0.4)),
+        auto_type=bool(settings.get("autoType", True)),
     )
     engine.load()
     return engine, "sherpa", engine.describe()
@@ -212,7 +217,7 @@ def backend_server() -> None:
                 elif content == "update_settings":
                     old = read_settings()
                     new = read_settings()
-                    reload_keys = ("engine", "language", "sherpaProfile", "sherpaProvider")
+                    reload_keys = ("engine", "language", "sherpaProfile", "sherpaProvider", "vadEnabled", "vadThreshold", "autoType")
                     if any(old.get(k) != new.get(k) for k in reload_keys):
                         send_status("idle", "restart required for engine/model changes")
                     else:

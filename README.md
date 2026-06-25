@@ -209,6 +209,12 @@ cat ~/.config/noctalia/plugins/dictation/settings.json
 
 ## Changelog
 
+### v0.4.0
+
+- Bar widget context menu: quick toggles for overlay, auto-type, and VAD; open plugin settings and history panel
+- Settings **Behavior** section: overlay position, partial transcript, auto-type, VAD enable and sensitivity
+- Backend honors `autoType`, `vadEnabled`, and `vadThreshold` (engine reload when VAD/auto-type change)
+
 ### v0.3.0
 
 - Silero VAD pre-ASR speech gating with hangover (`silero_vad.int8.onnx`)

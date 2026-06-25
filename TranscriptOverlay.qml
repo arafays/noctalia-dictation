@@ -13,15 +13,40 @@ PanelWindow {
     property var pluginApi: null
     property var mainInstance: null
 
-    readonly property bool active: mainInstance?.backendState === "recording"
-            || mainInstance?.backendState === "transcribing"
+    readonly property bool showOverlay:
+        pluginApi?.pluginSettings?.showOverlay ??
+        pluginApi?.manifest?.metadata?.defaultSettings?.showOverlay ??
+        true
+    readonly property bool showPartialTranscript:
+        pluginApi?.pluginSettings?.showPartialTranscript ??
+        pluginApi?.manifest?.metadata?.defaultSettings?.showPartialTranscript ??
+        true
+    readonly property string overlayPosition:
+        pluginApi?.pluginSettings?.overlayPosition ||
+        pluginApi?.manifest?.metadata?.defaultSettings?.overlayPosition ||
+        "bottom"
+
+    readonly property bool active: (mainInstance?.backendState === "recording"
+            || mainInstance?.backendState === "transcribing") && showOverlay
     readonly property string committedText: mainInstance?.liveTranscript || ""
     readonly property string partialText: mainInstance?.partialTranscript || ""
     readonly property bool isRecording: mainInstance?.backendState === "recording"
     readonly property int shadowPadding: Style.shadowBlurMax + Style.marginL
     readonly property int barOffsetBottom: {
+        if (overlayPosition !== "bottom")
+            return Style.marginXL
         const barPos = Settings.getBarPositionForScreen(screen?.name || "")
         if (barPos !== "bottom")
+            return Style.marginXL
+        const isFloating = Settings.data.bar.barType === "floating"
+        const floatMarginV = isFloating ? Math.ceil(Settings.data.bar.marginVertical) : 0
+        return Style.getBarHeightForScreen(screen?.name || "") + floatMarginV + Style.marginXL
+    }
+    readonly property int barOffsetTop: {
+        if (overlayPosition !== "top")
+            return Style.marginXL
+        const barPos = Settings.getBarPositionForScreen(screen?.name || "")
+        if (barPos !== "top")
             return Style.marginXL
         const isFloating = Settings.data.bar.barType === "floating"
         const floatMarginV = isFloating ? Math.ceil(Settings.data.bar.marginVertical) : 0
@@ -43,8 +68,10 @@ PanelWindow {
     Item {
         id: cardContainer
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: root.barOffsetBottom
+        anchors.bottom: overlayPosition === "bottom" ? parent.bottom : undefined
+        anchors.top: overlayPosition === "top" ? parent.top : undefined
+        anchors.bottomMargin: overlayPosition === "bottom" ? root.barOffsetBottom : 0
+        anchors.topMargin: overlayPosition === "top" ? root.barOffsetTop : 0
         width: cardBackground.width + root.shadowPadding * 2
         height: cardBackground.height + root.shadowPadding * 2
         opacity: root.active ? 1 : 0
@@ -127,7 +154,7 @@ PanelWindow {
 
                 NText {
                     Layout.fillWidth: true
-                    visible: root.partialText.length > 0
+                    visible: showPartialTranscript && root.partialText.length > 0
                     text: root.partialText
                     color: Color.mOnSurfaceVariant
                     pointSize: Style.fontSizeM

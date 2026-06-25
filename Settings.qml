@@ -67,6 +67,36 @@ ColumnLayout {
     _defaults?.recordingTimeout ??
     0
 
+  property bool editShowOverlay:
+    pluginApi?.pluginSettings?.showOverlay ??
+    _defaults?.showOverlay ??
+    true
+
+  property bool editShowPartial:
+    pluginApi?.pluginSettings?.showPartialTranscript ??
+    _defaults?.showPartialTranscript ??
+    true
+
+  property bool editAutoType:
+    pluginApi?.pluginSettings?.autoType ??
+    _defaults?.autoType ??
+    true
+
+  property bool editVadEnabled:
+    pluginApi?.pluginSettings?.vadEnabled ??
+    _defaults?.vadEnabled ??
+    true
+
+  property real editVadThreshold:
+    pluginApi?.pluginSettings?.vadThreshold ??
+    _defaults?.vadThreshold ??
+    0.4
+
+  property string editOverlayPosition:
+    pluginApi?.pluginSettings?.overlayPosition ||
+    _defaults?.overlayPosition ||
+    "bottom"
+
   // Backend status indicator
   Rectangle {
     Layout.fillWidth: true
@@ -199,6 +229,78 @@ ColumnLayout {
 
   NDivider {
     Layout.fillWidth: true
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.behavior") || "Behavior"
+    description: pluginApi?.tr("settings.behaviorDesc") || "Overlay, typing, and noise gating"
+  }
+
+  NToggle {
+    Layout.fillWidth: true
+    label: pluginApi?.tr("settings.showOverlay") || "Show live overlay"
+    description: pluginApi?.tr("settings.showOverlayDesc") || "Floating transcript card while dictating"
+    checked: root.editShowOverlay
+    onToggled: checked => root.editShowOverlay = checked
+  }
+
+  NToggle {
+    Layout.fillWidth: true
+    label: pluginApi?.tr("settings.showPartial") || "Show partial transcript"
+    description: pluginApi?.tr("settings.showPartialDesc") || "Italic preview text from the streaming pass"
+    checked: root.editShowPartial
+    onToggled: checked => root.editShowPartial = checked
+  }
+
+  NComboBox {
+    Layout.fillWidth: true
+    label: pluginApi?.tr("settings.overlayPosition") || "Overlay position"
+    description: pluginApi?.tr("settings.overlayPositionDesc") || "Where the transcript card appears on screen"
+    model: [
+      { "key": "bottom", "name": pluginApi?.tr("settings.overlayBottom") || "Bottom" },
+      { "key": "top", "name": pluginApi?.tr("settings.overlayTop") || "Top" }
+    ]
+    currentKey: root.editOverlayPosition
+    onSelected: key => root.editOverlayPosition = key
+    defaultValue: _defaults?.overlayPosition || "bottom"
+  }
+
+  NToggle {
+    Layout.fillWidth: true
+    label: pluginApi?.tr("settings.autoType") || "Auto-type on commit"
+    description: pluginApi?.tr("settings.autoTypeDesc") || "Type each phrase into the focused window via wtype (off = clipboard only on stop)"
+    checked: root.editAutoType
+    onToggled: checked => root.editAutoType = checked
+  }
+
+  NToggle {
+    Layout.fillWidth: true
+    label: pluginApi?.tr("settings.vadEnabled") || "Noise gate (VAD)"
+    description: pluginApi?.tr("settings.vadEnabledDesc") || "Silero VAD skips decode on non-speech audio"
+    checked: root.editVadEnabled
+    onToggled: checked => root.editVadEnabled = checked
+  }
+
+  NLabel {
+    visible: root.editVadEnabled
+    label: pluginApi?.tr("settings.vadThreshold") || "VAD sensitivity"
+    description: (pluginApi?.tr("settings.vadThresholdDesc") || "Higher = stricter (less background noise). Restart backend after change.")
+        + " (" + root.editVadThreshold.toFixed(2) + ")"
+  }
+
+  NSlider {
+    Layout.fillWidth: true
+    visible: root.editVadEnabled
+    from: 0.1
+    to: 0.9
+    stepSize: 0.05
+    value: root.editVadThreshold
+    onValueChanged: root.editVadThreshold = value
+  }
+
+  NDivider {
+    Layout.fillWidth: true
+    Layout.topMargin: Style.marginS
   }
 
   NLabel {
@@ -404,6 +506,12 @@ ColumnLayout {
     pluginApi.pluginSettings.sherpaProvider = root.editSherpaProvider
     pluginApi.pluginSettings.language = root.editLanguage
     pluginApi.pluginSettings.recordingTimeout = Math.max(0, Math.min(3600, parseInt(root.editTimeout, 10) || 0))
+    pluginApi.pluginSettings.showOverlay = root.editShowOverlay
+    pluginApi.pluginSettings.showPartialTranscript = root.editShowPartial
+    pluginApi.pluginSettings.autoType = root.editAutoType
+    pluginApi.pluginSettings.overlayPosition = root.editOverlayPosition
+    pluginApi.pluginSettings.vadEnabled = root.editVadEnabled
+    pluginApi.pluginSettings.vadThreshold = Math.max(0.1, Math.min(0.9, parseFloat(root.editVadThreshold) || 0.4))
     pluginApi.saveSettings()
 
     if (pluginApi?.mainInstance) {

@@ -151,10 +151,10 @@ def _pick_sensevoice(model_dir: Path) -> Path:
     raise FileNotFoundError(f"No sensevoice model in {model_dir}")
 
 
-def _create_vad(vad_path: Path) -> tuple[Any, int]:
+def _create_vad(vad_path: Path, threshold: float = VAD_THRESHOLD) -> tuple[Any, int]:
     config = sherpa_onnx.VadModelConfig()
     config.silero_vad.model = str(vad_path)
-    config.silero_vad.threshold = VAD_THRESHOLD
+    config.silero_vad.threshold = max(0.1, min(0.9, threshold))
     config.silero_vad.min_speech_duration = VAD_MIN_SPEECH_SEC
     config.silero_vad.min_silence_duration = VAD_MIN_SILENCE_SEC
     config.sample_rate = SAMPLE_RATE
@@ -167,10 +167,11 @@ def _create_vad(vad_path: Path) -> tuple[Any, int]:
 class SpeechGate:
     """Silero VAD pre-gate with hangover to suppress noise-only decode."""
 
-    def __init__(self, vad: Any, window_size: int, hangover_sec: float = VAD_HANGOVER_SEC) -> None:
+    def __init__(self, vad: Any | None, window_size: int, hangover_sec: float = VAD_HANGOVER_SEC) -> None:
         self.vad = vad
         self.window_size = window_size
         self.hangover_sec = hangover_sec
+        self._bypass = vad is None
         self._pending = np.array([], dtype=np.float32)
         self._gate_open = False
         self._hangover_remaining = 0.0
@@ -187,6 +188,12 @@ class SpeechGate:
     def accept_chunk(self, samples: np.ndarray) -> bool:
         """Feed audio to VAD; return True when ASR should process this chunk."""
         flat = samples.reshape(-1).astype(np.float32, copy=False)
+        if self._bypass:
+            chunk_samples = len(flat)
+            self._segment_speech_samples += chunk_samples
+            self._session_speech_samples += chunk_samples
+            return True
+
         self._pending = np.concatenate([self._pending, flat])
         while len(self._pending) >= self.window_size:
             self.vad.accept_waveform(self._pending[: self.window_size])
@@ -218,6 +225,9 @@ class SherpaEngine:
     provider: str = "cpu"
     language: str = "auto"
     num_threads: int = 2
+    vad_enabled: bool = True
+    vad_threshold: float = VAD_THRESHOLD
+    auto_type: bool = True
     first: Any = field(default=None, repr=False)
     second: Any = field(default=None, repr=False)
     vad: Any = field(default=None, repr=False)
@@ -267,7 +277,9 @@ class SherpaEngine:
                 use_itn=True,
                 decoding_method="greedy_search",
             )
-        self.vad, self.vad_window_size = _create_vad(paths["vad"])
+        self.vad, self.vad_window_size = (
+            _create_vad(paths["vad"], self.vad_threshold) if self.vad_enabled else (None, 512)
+        )
 
     def describe(self) -> str:
         return f"sherpa-onnx two-pass + VAD ({self.profile}, {self.provider})"
@@ -308,7 +320,8 @@ class SherpaSession:
             return
         to_type = _with_space_prefix(text, self.committed_text)
         if to_type:
-            type_committed(to_type)
+            if self.engine.auto_type:
+                type_committed(to_type)
             self.committed_text += to_type
 
     def accept_chunk(self, samples: np.ndarray) -> None:

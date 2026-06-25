@@ -2,7 +2,7 @@
   "key": "dictation",
   "id": "dictation",
   "name": "Dictation",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "minNoctaliaVersion": "4.0.0",
   "author": "Abdul Rafay Shaikh",
   "license": "MIT",
@@ -24,7 +24,13 @@
       "sherpaProfile": "auto",
       "sherpaProvider": "auto",
       "language": "auto",
-      "recordingTimeout": 0
+      "recordingTimeout": 0,
+      "showOverlay": true,
+      "showPartialTranscript": true,
+      "autoType": true,
+      "overlayPosition": "bottom",
+      "vadEnabled": true,
+      "vadThreshold": 0.4
     }
   }
 }

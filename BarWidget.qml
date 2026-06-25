@@ -19,6 +19,13 @@ Item {
     readonly property string state: mainInstance?.backendState || "stopped"
     readonly property string message: mainInstance?.backendMessage || ""
 
+    property var cfg: pluginApi?.pluginSettings || ({})
+    property var defaults: pluginApi?.manifest?.metadata?.defaultSettings || ({})
+
+    readonly property bool showOverlay: cfg.showOverlay ?? defaults.showOverlay ?? true
+    readonly property bool autoType: cfg.autoType ?? defaults.autoType ?? true
+    readonly property bool vadEnabled: cfg.vadEnabled ?? defaults.vadEnabled ?? true
+
     readonly property string screenName: screen?.name ?? ""
     readonly property string barPosition: Settings.getBarPositionForScreen(screenName)
     readonly property bool isBarVertical: barPosition === "left" || barPosition === "right"
@@ -29,6 +36,22 @@ Item {
 
     implicitWidth: contentWidth
     implicitHeight: contentHeight
+
+    function saveQuickSetting(key, value) {
+        if (!pluginApi) return
+        pluginApi.pluginSettings[key] = value
+        pluginApi.saveSettings()
+        var backendKeys = ["autoType", "vadEnabled", "vadThreshold"]
+        if (backendKeys.indexOf(key) >= 0 && mainInstance) {
+            mainInstance.updateSettings()
+        }
+    }
+
+    function openSettings() {
+        if (pluginApi?.manifest) {
+            BarService.openPluginSettings(screen, pluginApi.manifest)
+        }
+    }
 
     readonly property string tooltipText: {
         switch (state) {
@@ -203,8 +226,34 @@ Item {
                 "icon": "microphone"
             },
             {
-                "label": pluginApi?.tr("context.settings") || "Settings",
-                "action": "open-settings",
+                "label": pluginApi?.tr("context.openPanel") || "Open history panel",
+                "action": "open-panel",
+                "icon": "history"
+            },
+            {
+                "label": (root.showOverlay
+                    ? (pluginApi?.tr("context.overlayOn") || "Live overlay: on")
+                    : (pluginApi?.tr("context.overlayOff") || "Live overlay: off")),
+                "action": "toggle-overlay",
+                "icon": root.showOverlay ? "eye" : "eye-off"
+            },
+            {
+                "label": (root.autoType
+                    ? (pluginApi?.tr("context.autoTypeOn") || "Auto-type: on")
+                    : (pluginApi?.tr("context.autoTypeOff") || "Auto-type: off")),
+                "action": "toggle-auto-type",
+                "icon": "keyboard"
+            },
+            {
+                "label": (root.vadEnabled
+                    ? (pluginApi?.tr("context.vadOn") || "Noise gate (VAD): on")
+                    : (pluginApi?.tr("context.vadOff") || "Noise gate (VAD): off")),
+                "action": "toggle-vad",
+                "icon": "filter"
+            },
+            {
+                "label": pluginApi?.tr("actions.widget-settings") || I18n.tr("actions.widget-settings"),
+                "action": "widget-settings",
                 "icon": "settings"
             }
         ]
@@ -217,10 +266,16 @@ Item {
                 if (mainInstance) {
                     mainInstance.toggleRecording()
                 }
-            } else if (action === "open-settings") {
-                if (pluginApi?.manifest) {
-                    BarService.openPluginSettings(screen, pluginApi.manifest)
-                }
+            } else if (action === "open-panel") {
+                pluginApi?.openPanel(screen, root)
+            } else if (action === "toggle-overlay") {
+                root.saveQuickSetting("showOverlay", !root.showOverlay)
+            } else if (action === "toggle-auto-type") {
+                root.saveQuickSetting("autoType", !root.autoType)
+            } else if (action === "toggle-vad") {
+                root.saveQuickSetting("vadEnabled", !root.vadEnabled)
+            } else if (action === "widget-settings") {
+                root.openSettings()
             }
         }
     }

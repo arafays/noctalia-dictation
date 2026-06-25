@@ -12,7 +12,16 @@
   },
   "context": {
     "toggle": "Toggle Dictation",
-    "settings": "Settings"
+    "openPanel": "Open history panel",
+    "overlayOn": "Live overlay: on",
+    "overlayOff": "Live overlay: off",
+    "autoTypeOn": "Auto-type: on",
+    "autoTypeOff": "Auto-type: off",
+    "vadOn": "Noise gate (VAD): on",
+    "vadOff": "Noise gate (VAD): off"
+  },
+  "actions": {
+    "widget-settings": "Widget settings"
   },
   "overlay": {
     "listening": "Listening...",
@@ -33,6 +42,22 @@
   },
   "settings": {
     "title": "Dictation Settings",
+    "behavior": "Behavior",
+    "behaviorDesc": "Overlay, typing, and noise gating",
+    "showOverlay": "Show live overlay",
+    "showOverlayDesc": "Floating transcript card while dictating",
+    "showPartial": "Show partial transcript",
+    "showPartialDesc": "Italic preview text from the streaming pass",
+    "overlayPosition": "Overlay position",
+    "overlayPositionDesc": "Where the transcript card appears on screen",
+    "overlayBottom": "Bottom",
+    "overlayTop": "Top",
+    "autoType": "Auto-type on commit",
+    "autoTypeDesc": "Type each phrase into the focused window via wtype (off = clipboard only on stop)",
+    "vadEnabled": "Noise gate (VAD)",
+    "vadEnabledDesc": "Silero VAD skips decode on non-speech audio",
+    "vadThreshold": "VAD sensitivity",
+    "vadThresholdDesc": "Higher = stricter (less background noise). Restart backend after change.",
     "engine": "Speech engine",
     "engineDesc": "sherpa-onnx two-pass streaming with Silero VAD noise gating (Zipformer live + Whisper/SenseVoice finals).",
     "sherpaProfile": "sherpa model profile",
