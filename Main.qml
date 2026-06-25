@@ -16,6 +16,7 @@ Item {
   property var history: []
   property bool pendingStart: false
   property int _retryCount: 0
+  property string _lastErrorNotified: ""
   property bool _venvReady: false
   property var panelScreen: null
 
@@ -216,7 +217,7 @@ Item {
       checkVenv()
       return
     }
-    if ((backendState === "stopped" || backendState === "error" || backendState === "setup") && !_launchingBackend) {
+    if ((backendState === "stopped" || backendState === "error" || backendState === "setup" || backendState === "stopping") && !_launchingBackend) {
       _retryCount = 0
       launchBackend()
     }
@@ -263,6 +264,14 @@ Item {
       pendingStart = false
       _pendingStartTimeout.stop()
       stopRecording()
+      return
+    }
+    if (backendState === "error") {
+      pendingStart = true
+      _pendingStartTimeout.restart()
+      _retryCount = 0
+      _lastErrorNotified = ""
+      launchBackend()
       return
     }
     pendingStart = true
@@ -384,7 +393,18 @@ Item {
           }
 
           if (data.state === "error" && data.message) {
-            root.sendErrorNotification(data.message)
+            if (root._lastErrorNotified !== data.message) {
+              root._lastErrorNotified = data.message
+              root.sendErrorNotification(data.message)
+            }
+            if (root._retryCount < 3 && !_retryTimer.running) {
+              _retryTimer.restart()
+            }
+          }
+
+          if (data.state === "idle" && data.message === "ready") {
+            root._lastErrorNotified = ""
+            root._retryCount = 0
           }
 
           if (root.pendingStart && data.state === "idle" &&
