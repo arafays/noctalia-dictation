@@ -31,6 +31,24 @@ Item {
   readonly property string backendScript: pluginDir + "/dictation_backend.py"
   readonly property string setupScript: pluginDir + "/setup.sh"
 
+  function setupFixHint() {
+    return "cd " + pluginDir + " && ./setup.sh"
+  }
+
+  function modelsFixHint(profile) {
+    var p = profile || "english"
+    return "cd " + pluginDir + " && ./download_models.sh " + p
+  }
+
+  function formatSetupError(stderr) {
+    var hint = setupFixHint()
+    var tail = stderr ? stderr.trim().split("\n").pop() : ""
+    if (tail.indexOf("dictation-setup:") >= 0) {
+      return tail.replace(/^dictation-setup:\s*/, "") + " Fix: " + hint
+    }
+    return "Python setup failed. Run: " + hint + (tail ? " (" + tail + ")" : "")
+  }
+
   property bool _launchingBackend: false
   property string backendStdout: ""
   property string backendStderr: ""
@@ -75,9 +93,9 @@ Item {
           root.ensureBackend()
         } else {
           root.backendState = "error"
-          root.backendMessage = "Failed to set up Python environment"
+          root.backendMessage = root.formatSetupError(err)
           Logger.e("Dictation", "venv setup failed, stderr:", err)
-          root.sendErrorNotification("Failed to set up Python environment")
+          root.sendErrorNotification(root.backendMessage)
         }
       }
     }
@@ -97,9 +115,11 @@ Item {
       root._launchingBackend = false
       if (root.backendState === "starting") {
         root.backendState = "error"
-        root.backendMessage = "Backend failed to start (timeout)"
+        var timeoutHint = pluginApi?.tr("errors.backendTimeout") ||
+            "Backend failed to start (timeout). Open plugin settings → Verify installation, or run: " + root.setupFixHint()
+        root.backendMessage = timeoutHint
         Logger.e("Dictation", "backend launch timed out after 60s")
-        root.sendErrorNotification("Backend failed to start (timeout)")
+        root.sendErrorNotification(timeoutHint)
       }
     }
     running: false
@@ -114,7 +134,9 @@ Item {
         Logger.i("Dictation", "retrying backend start, attempt", root._retryCount)
         root.launchBackend()
       } else if (root.backendState === "error" && root._retryCount >= 3) {
-        root.sendErrorNotification("Backend failed after 3 retries")
+        var retryHint = pluginApi?.tr("errors.backendRetries") ||
+            "Backend failed after 3 retries. Open plugin settings → Verify installation."
+        root.sendErrorNotification(retryHint)
       }
     }
     running: false
@@ -173,7 +195,8 @@ Item {
         root._launchingBackend = false
         _launchGuardTimer.stop()
         root.backendState = "error"
-        root.backendMessage = "Backend process exited unexpectedly"
+        root.backendMessage = pluginApi?.tr("errors.backendExited") ||
+            "Backend exited unexpectedly. Check plugin settings → Logs, then Verify installation."
         Logger.e("Dictation", "backend process exited unexpectedly, stderr:", _backendProcess.stderr?.text || "(none)")
         _retryTimer.restart()
       } else if (!running) {
@@ -182,6 +205,43 @@ Item {
         Logger.i("Dictation", "backend process stopped")
       }
     }
+  }
+
+  Process {
+    id: _diagnoseProcess
+    command: root.pythonCmd(["diagnose"])
+
+    onRunningChanged: root.diagnoseRunning = running
+
+    stdout: StdioCollector {
+      id: _diagnoseStdout
+      onStreamFinished: {
+        try {
+          var data = JSON.parse(text)
+          root._lastDiagnose = data
+          root._diagnoseRev++
+          if (!data.ready && data.checks) {
+            for (var i = 0; i < data.checks.length; i++) {
+              var c = data.checks[i]
+              if (!c.ok && c.detail) {
+                Logger.w("Dictation", "install check failed:", c.label, "—", c.detail)
+              }
+            }
+          }
+        } catch (e) {
+          Logger.w("Dictation", "diagnose parse failed:", e)
+        }
+      }
+    }
+  }
+
+  property var _lastDiagnose: null
+  property int _diagnoseRev: 0
+  property bool diagnoseRunning: false
+
+  function runDiagnose() {
+    if (!pluginDir) return
+    _diagnoseProcess.exec(root.pythonCmd(["diagnose"]))
   }
 
   function pythonCmd(args) {

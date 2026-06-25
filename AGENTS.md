@@ -1,4 +1,4 @@
-# Dictation Plugin — Development Guide (v0.4.3)
+# Dictation Plugin — Development Guide (v0.4.5)
 
 ## Architecture
 

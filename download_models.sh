@@ -8,15 +8,31 @@ BASE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
 
 profile="${1:-all}"
 
+if ! command -v curl >/dev/null 2>&1; then
+  echo "dictation-models: error: curl not found" >&2
+  echo "dictation-models: fix: install curl (e.g. pacman -S curl), then re-run this script" >&2
+  exit 1
+fi
+
+if ! command -v tar >/dev/null 2>&1; then
+  echo "dictation-models: error: tar not found" >&2
+  echo "dictation-models: fix: install tar, then re-run this script" >&2
+  exit 1
+fi
+
 download_vad() {
   local name="silero_vad.int8.onnx"
   if [[ -f "${MODELS_DIR}/${name}" ]]; then
     echo "dictation-models: ${name} already present"
     return 0
   fi
-  echo "dictation-models: downloading ${name}..."
+  echo "dictation-models: downloading ${name} (~200 KB)..."
   mkdir -p "${MODELS_DIR}"
-  curl -fL --retry 3 --retry-delay 2 -o "${MODELS_DIR}/${name}" "${BASE_URL}/${name}"
+  if ! curl -fL --retry 3 --retry-delay 2 -o "${MODELS_DIR}/${name}" "${BASE_URL}/${name}"; then
+    echo "dictation-models: error: failed to download ${name}" >&2
+    echo "dictation-models: fix: check network, then: cd ${SCRIPT_DIR} && ./download_models.sh ${profile}" >&2
+    exit 1
+  fi
   echo "dictation-models: installed ${name}"
 }
 
@@ -27,11 +43,21 @@ download_pack() {
     echo "dictation-models: ${dir} already present"
     return 0
   fi
-  echo "dictation-models: downloading ${archive}..."
+  echo "dictation-models: downloading ${archive} (this may take a few minutes)..."
   mkdir -p "${MODELS_DIR}"
   tmp="${MODELS_DIR}/${archive}"
-  curl -fL --retry 3 --retry-delay 2 -o "${tmp}" "${BASE_URL}/${archive}"
-  tar -xjf "${tmp}" -C "${MODELS_DIR}"
+  if ! curl -fL --retry 3 --retry-delay 2 -o "${tmp}" "${BASE_URL}/${archive}"; then
+    echo "dictation-models: error: failed to download ${archive}" >&2
+    echo "dictation-models: fix: check network/disk space, then: cd ${SCRIPT_DIR} && ./download_models.sh ${profile}" >&2
+    rm -f "${tmp}"
+    exit 1
+  fi
+  if ! tar -xjf "${tmp}" -C "${MODELS_DIR}"; then
+    echo "dictation-models: error: failed to extract ${archive}" >&2
+    echo "dictation-models: fix: remove partial files in ${MODELS_DIR} and re-run" >&2
+    rm -f "${tmp}"
+    exit 1
+  fi
   rm -f "${tmp}"
   echo "dictation-models: installed ${dir}"
 }
@@ -66,6 +92,9 @@ case "${profile}" in
     ;;
   *)
     echo "Usage: $0 [english|multilingual|all]" >&2
+    echo "  english       ~150 MB, Zipformer + Whisper + VAD (recommended)" >&2
+    echo "  multilingual  ~700 MB, bilingual Zipformer + SenseVoice + VAD" >&2
+    echo "  all           both profiles + VAD (~850 MB)" >&2
     exit 1
     ;;
 esac

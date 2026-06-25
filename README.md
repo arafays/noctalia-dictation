@@ -31,9 +31,17 @@ Lower latency live feedback, better segment accuracy, and true streaming without
 | `wl-copy` | Session clipboard on stop (`ydotool` paste fallback if `wtype` unavailable) |
 | Python 3.10+ | Created automatically by `setup.sh` in a plugin-local venv |
 | `curl`, `tar` | Used by `download_models.sh` |
-| Microphone | PipeWire/PulseAudio; `sounddevice` needs PortAudio (often via `python-sounddevice` / `portaudio` system package) |
+| Microphone | PipeWire/PulseAudio; `sounddevice` needs PortAudio (often via `portaudio` / `libportaudio` system package) |
 | ~200MB–900MB disk | Depends on model profile (see [Models](#models)) |
-| Optional: CUDA | Faster ONNX inference when `sherpa provider` is set to CUDA |
+| Optional: CUDA | Faster ONNX inference when **sherpa provider** is set to CUDA |
+
+**Typical system packages (Arch examples):**
+
+```bash
+sudo pacman -S python wtype wl-clipboard portaudio curl tar
+```
+
+Fedora/Debian equivalents: `dnf install python3 wtype wl-clipboard portaudio curl tar` / `apt install python3 wtype wl-clipboard libportaudio2 curl tar`.
 
 ## How Noctalia plugins work
 
@@ -50,6 +58,8 @@ Plugin enable/disable state and configured sources are stored in **`~/.config/no
 > **This repository** is a standalone plugin repo (plugin files live at the repo root). The Noctalia plugin manager expects multi-plugin repos with a `dictation/` subfolder, so **manual install or symlink is the supported path here** until the plugin is merged into [noctalia-plugins](https://github.com/noctalia-dev/noctalia-plugins).
 
 ## Installation
+
+Follow these steps in order. Total time: **~5–15 minutes** (mostly model download).
 
 ### 1. Install into the Noctalia plugins directory
 
@@ -71,6 +81,8 @@ cd ~/projects/noctalia-dictation   # work in the clone, not ~/.config
 
 Do not copy or rsync over an existing dev symlink — Noctalia reads the symlink target directly.
 
+**Verify:** `ls ~/.config/noctalia/plugins/dictation/manifest.json` should exist and `"id"` must be `"dictation"`.
+
 ### 2. Install Python dependencies
 
 Creates `.venv/` in the plugin directory and installs `sherpa-onnx`, `sounddevice`, and `numpy`:
@@ -79,17 +91,31 @@ Creates `.venv/` in the plugin directory and installs `sherpa-onnx`, `sounddevic
 ./setup.sh
 ```
 
-Uses `uv` when available, otherwise `python3 -m venv` + `pip`.
+Uses `uv` when available, otherwise `python3 -m venv` + `pip`. Expect **~1–3 minutes** on first run.
+
+**Expected last line:** `venv-ready`
+
+If it fails, the script prints `dictation-setup: error:` with a fix hint (e.g. install Python 3.10+, PortAudio, or check network).
 
 ### 3. Download speech models
 
 ```bash
-./download_models.sh english       # ~150MB + VAD — recommended first
-# ./download_models.sh multilingual  # ~700MB — Chinese/English/Japanese/Korean/Yue + VAD
-# ./download_models.sh all           # both profiles + VAD
+./download_models.sh english       # ~150 MB + VAD — recommended first (~2–5 min)
+# ./download_models.sh multilingual  # ~700 MB — Chinese/English/Japanese/Korean/Yue + VAD
+# ./download_models.sh all           # both profiles + VAD (~850 MB)
 ```
 
 Models are stored under `models/` inside the plugin directory (not committed to git).
+
+**Expected last line:** `models-ready`
+
+**Files created (english profile):**
+
+| Path | Purpose |
+|------|---------|
+| `models/silero_vad.int8.onnx` | Silero VAD noise gate (~200 KB) |
+| `models/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17/` | Streaming 1st pass |
+| `models/sherpa-onnx-whisper-tiny.en/` | Whisper 2nd pass |
 
 ### 4. Enable in Noctalia
 
@@ -99,6 +125,27 @@ Models are stored under `models/` inside the plugin directory (not committed to 
 4. Open **Settings → Bar**, pick a section, and add the **Dictation** widget.
 
 The first enable runs `setup.sh` again if the venv is missing; the bar widget shows progress while dependencies install.
+
+### 5. Verify installation
+
+Open **Settings → Plugins → Installed → Dictation** (gear icon) and click **Verify installation**. All checks should be green:
+
+- Python 3.10+
+- sherpa-onnx package
+- sounddevice (microphone)
+- ONNX models (english or your profile)
+- wtype + wl-copy
+
+Or from a terminal:
+
+```bash
+cd ~/.config/noctalia/plugins/dictation
+./.venv/bin/python dictation_backend.py diagnose
+```
+
+### 6. Bind a compositor hotkey (optional)
+
+See [Hotkey (Niri example)](#hotkey-niri-example) below. The bar mic button works without a hotkey.
 
 ### Alternative: install from the official registry (when listed)
 
@@ -201,16 +248,37 @@ Until merged, users install from this repository manually. After merge, the same
 
 ## Troubleshooting
 
-| Problem | What to try |
-|---------|-------------|
-| Plugin not in **Installed** | Folder must be `~/.config/noctalia/plugins/dictation/` with valid `manifest.json`; `id` must be `dictation`; restart Noctalia |
-| Stuck on “Installing dependencies…” | Run `./setup.sh` manually; check `python3` or `uv` is on PATH; read stderr in `journalctl --user` / terminal |
-| “Models not found” / backend error | Run `./download_models.sh english` (or your profile); confirm `models/` exists |
-| No typing into apps | Install `wtype`; focus a text field before dictating |
-| No clipboard on stop | Install `wl-copy` (`wl-clipboard` package) |
-| No microphone / no audio | Check PipeWire/PulseAudio; install PortAudio (`libportaudio` / `portaudio`) for `sounddevice` |
-| CUDA errors | Set **sherpa provider** to CPU in plugin settings |
-| Hot reload not working | Enable debug mode (click Noctalia logo 8× in About, or `NOCTALIA_DEBUG=1`); toggle development mode on the plugin |
+Open **Settings → Plugins → Dictation** and use **Verify installation** first — failed checks show the exact fix command.
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Plugin not in **Installed** | Wrong folder or invalid manifest | Path must be `~/.config/noctalia/plugins/dictation/` with `manifest.json` where `"id": "dictation"`. Restart Noctalia. |
+| Stuck on “Installing dependencies…” | `setup.sh` failed or hung | Run manually: `cd ~/.config/noctalia/plugins/dictation && ./setup.sh` — expect `venv-ready`. Check `python3 --version` (3.10+). |
+| sherpa-onnx not installed | Venv missing or pip failed | `cd ~/.config/noctalia/plugins/dictation && ./setup.sh` |
+| Models not found / VAD missing | `download_models.sh` not run | `cd ~/.config/noctalia/plugins/dictation && ./download_models.sh english` — confirm `models/silero_vad.int8.onnx` exists |
+| Backend won't start | Any of the above, or CUDA issue | Run `./.venv/bin/python dictation_backend.py diagnose`. Set **sherpa provider** to CPU if CUDA errors. Click **Restart** in settings. |
+| No typing into apps | `wtype` missing | `pacman -S wtype` (or distro equivalent). Focus a text field before dictating. Or disable **Auto-type** in settings. |
+| No clipboard on stop | `wl-copy` missing | Install `wl-clipboard`. Or install `ydotool` as paste fallback. |
+| No microphone / no audio | PipeWire/PulseAudio or PortAudio | Check mic in system settings. Install PortAudio: `pacman -S portaudio`, then re-run `./setup.sh`. |
+| Microphone permission denied | Compositor/desktop privacy | Grant microphone access to Noctalia / `qs` in your desktop settings. |
+| Hot reload not working | Debug mode off | Enable debug mode (click Noctalia logo 8× in About, or `NOCTALIA_DEBUG=1`); toggle development mode on the plugin |
+
+### Error messages in the UI
+
+The bar widget tooltip and settings **Backend** panel show actionable errors, for example:
+
+- `Missing model files (silero_vad.int8.onnx). Run: cd …/dictation && ./download_models.sh english`
+- `sherpa-onnx Python package not installed. Fix: cd …/dictation && ./setup.sh`
+- `wtype not found … Install: pacman -S wtype`
+
+### Manual diagnostics
+
+```bash
+cd ~/.config/noctalia/plugins/dictation
+./.venv/bin/python dictation_backend.py diagnose   # JSON install report
+./.venv/bin/python dictation_backend.py status     # backend running?
+ls -la models/                                     # model files on disk
+```
 
 Useful paths:
 
@@ -221,6 +289,13 @@ cat ~/.config/noctalia/plugins/dictation/settings.json
 ```
 
 ## Changelog
+
+### v0.4.5
+
+- Actionable install/error messages in backend, bar widget, and settings toasts
+- **Verify installation** checklist in plugin settings (`dictation_backend.py diagnose`)
+- `models_missing_reason()` with exact missing files and download command
+- Improved `setup.sh` / `download_models.sh` error output; expanded README troubleshooting
 
 ### v0.4.4
 

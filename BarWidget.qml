@@ -67,7 +67,7 @@ Item {
             return pluginApi?.tr("widget.starting") || "Starting backend..."
         case "error":
             return (pluginApi?.tr("widget.error", {message: message}) || ("Error: " + message))
-                + "\n" + (pluginApi?.tr("widget.errorHint") || "click to retry")
+                + "\n" + (pluginApi?.tr("widget.errorHint") || "Click to retry — open settings for fix steps")
         case "idle":
             if (message === "no_speech") {
                 return pluginApi?.tr("widget.noSpeech") || "No speech detected"

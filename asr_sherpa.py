@@ -81,11 +81,34 @@ def vad_model_path(models_dir: Path) -> Path:
 
 
 def models_ready(models_dir: Path, profile: str) -> bool:
+    return models_missing_reason(models_dir, profile) is None
+
+
+def models_missing_reason(models_dir: Path, profile: str) -> str | None:
+    """Return a human-readable reason when models are incomplete, else None."""
+    if profile not in MODEL_PACKS:
+        return f"Unknown sherpa profile '{profile}'"
+
+    missing: list[str] = []
+    if not vad_model_path(models_dir).is_file():
+        missing.append(VAD_MODEL_NAME)
+
+    pack = MODEL_PACKS[profile]
+    if not (models_dir / pack["dir"]).is_dir():
+        missing.append(pack["dir"])
+    if not (models_dir / pack["second_dir"]).is_dir():
+        missing.append(pack["second_dir"])
+
+    if missing:
+        fix = f"cd {models_dir.parent} && ./download_models.sh {profile}"
+        return f"Missing model files ({', '.join(missing)}). Run: {fix}"
+
     try:
         resolve_model_paths(models_dir, profile)
-        return vad_model_path(models_dir).is_file()
-    except FileNotFoundError:
-        return False
+    except FileNotFoundError as exc:
+        fix = f"cd {models_dir.parent} && ./download_models.sh {profile}"
+        return f"{exc}. Re-run: {fix}"
+    return None
 
 
 def resolve_model_paths(models_dir: Path, profile: str) -> dict[str, Path]:
@@ -417,4 +440,4 @@ def record_session(
         else:
             send_status("idle", "no_speech", live_transcript="", partial_transcript="", engine=engine.describe())
     except Exception as exc:
-        send_status("error", f"{exc!r}", live_transcript="", partial_transcript="")
+        send_status("error", str(exc), live_transcript="", partial_transcript="")

@@ -7,7 +7,7 @@
     "recordingHint": "click to stop",
     "transcribing": "Transcribing...",
     "error": "Error: {message}",
-    "errorHint": "click to retry",
+    "errorHint": "Click to retry — open settings for fix steps",
     "noSpeech": "No speech detected"
   },
   "context": {
@@ -79,7 +79,7 @@
     "sherpaProvider": "sherpa compute provider",
     "sherpaProviderDesc": "ONNX Runtime provider for sherpa-onnx",
     "downloadModels": "Model download",
-    "downloadModelsDesc": "Run download_models.sh english (or multilingual) once after install. Includes Silero VAD (~200KB).",
+    "downloadModelsDesc": "Run download_models.sh english (or multilingual) once after install. English ~150 MB; multilingual ~700 MB. Includes Silero VAD (~200 KB).",
     "language": "Language",
     "languageDesc": "Auto-detect or pick a specific language",
     "timeout": "Safety timeout",
@@ -104,7 +104,22 @@
       "setup": "Installing...",
       "error": "Error",
       "stopped": "Stopped"
+    },
+    "deps": {
+      "title": "Installation checks",
+      "desc": "Verify Python packages, speech models, and typing tools before dictating.",
+      "verify": "Verify installation",
+      "checking": "Checking...",
+      "notRun": "Click Verify installation to run checks.",
+      "ok": "OK",
+      "allOk": "All checks passed",
+      "fixNeeded": "Fix the items above, then verify again"
     }
+  },
+  "errors": {
+    "backendTimeout": "Backend failed to start (timeout). Open plugin settings → Verify installation.",
+    "backendRetries": "Backend failed after 3 retries. Open plugin settings → Verify installation.",
+    "backendExited": "Backend exited unexpectedly. Check plugin settings → Logs, then Verify installation."
   },
   "notification": {
     "copied": "Transcription copied to clipboard",

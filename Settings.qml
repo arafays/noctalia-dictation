@@ -197,6 +197,129 @@ ColumnLayout {
     _defaults?.stopHotkeyHint ||
     ""
 
+  property var depChecks: {
+    var mi = pluginApi?.mainInstance
+    if (!mi) return []
+    void mi._diagnoseRev
+    return mi._lastDiagnose?.checks || []
+  }
+  property bool depChecking: pluginApi?.mainInstance?.diagnoseRunning === true
+  property bool depReady: {
+    var mi = pluginApi?.mainInstance
+    if (!mi) return false
+    void mi._diagnoseRev
+    return mi._lastDiagnose?.ready === true
+  }
+
+  readonly property string pluginDir: pluginApi?.pluginDir || ""
+
+  function runVerifyInstallation() {
+    if (!pluginDir || !pluginApi?.mainInstance) return
+    pluginApi.mainInstance.runDiagnose()
+  }
+
+  Component.onCompleted: Qt.callLater(runVerifyInstallation)
+
+  NDivider {
+    Layout.fillWidth: true
+  }
+
+  NLabel {
+    label: pluginApi?.tr("settings.deps.title") || "Installation checks"
+    description: pluginApi?.tr("settings.deps.desc")
+        || "Verify Python packages, speech models, and typing tools before dictating."
+  }
+
+  Rectangle {
+    Layout.fillWidth: true
+    Layout.preferredHeight: depList.implicitHeight + Style.marginM * 2
+    color: Color.mSurfaceVariant
+    radius: Style.radiusM
+
+    ColumnLayout {
+      id: depList
+      anchors {
+        fill: parent
+        margins: Style.marginM
+      }
+      spacing: Style.marginS
+
+      Repeater {
+        model: root.depChecks
+
+        delegate: RowLayout {
+          required property var modelData
+          Layout.fillWidth: true
+          spacing: Style.marginS
+
+          NIcon {
+            icon: modelData.ok ? "circle-check-filled" : "alert-triangle-filled"
+            color: modelData.ok ? Color.mPrimary : Color.mError
+            applyUiScale: false
+          }
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+
+            NText {
+              text: modelData.label || ""
+              color: Color.mOnSurface
+              font.weight: Font.Medium
+              pointSize: Style.fontSizeS
+            }
+            NText {
+              text: modelData.ok
+                  ? (pluginApi?.tr("settings.deps.ok") || "OK")
+                  : (modelData.fix || modelData.detail || "")
+              color: modelData.ok ? Color.mOnSurfaceVariant : Color.mError
+              pointSize: Style.fontSizeXS
+              wrapMode: Text.WordWrap
+              Layout.fillWidth: true
+            }
+          }
+        }
+      }
+
+      NText {
+        visible: root.depChecks.length === 0 && !root.depChecking
+        text: pluginApi?.tr("settings.deps.notRun") || "Click Verify installation to run checks."
+        color: Color.mOnSurfaceVariant
+        pointSize: Style.fontSizeS
+      }
+
+      NText {
+        visible: root.depChecking
+        text: pluginApi?.tr("settings.deps.checking") || "Checking..."
+        color: Color.mOnSurfaceVariant
+        pointSize: Style.fontSizeS
+      }
+    }
+  }
+
+  RowLayout {
+    Layout.fillWidth: true
+    spacing: Style.marginS
+
+    NButton {
+      text: pluginApi?.tr("settings.deps.verify") || "Verify installation"
+      outlined: true
+      enabled: !root.depChecking && root.pluginDir.length > 0
+      onClicked: root.runVerifyInstallation()
+    }
+
+    NText {
+      visible: root.depChecks.length > 0
+      text: root.depReady
+          ? (pluginApi?.tr("settings.deps.allOk") || "All checks passed")
+          : (pluginApi?.tr("settings.deps.fixNeeded") || "Fix the items above, then verify again")
+      color: root.depReady ? Color.mPrimary : Color.mError
+      pointSize: Style.fontSizeS
+      Layout.fillWidth: true
+      wrapMode: Text.WordWrap
+    }
+  }
+
   // Backend status indicator
   Rectangle {
     Layout.fillWidth: true
@@ -304,7 +427,7 @@ ColumnLayout {
           color: Color.mOnSurfaceVariant
           pointSize: Style.fontSizeXS
           visible: text.length > 0
-          elide: Text.ElideRight
+          wrapMode: Text.WordWrap
           Layout.fillWidth: true
         }
       }

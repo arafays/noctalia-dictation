@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from asr_common import check_injection_tools, send_status
+from asr_common import check_injection_tools, injection_tools_error_message, send_status
 
 RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/tmp/user-{os.getuid()}"))
 SIGNAL_FILE = RUNTIME_DIR / "noctalia-dictation-signal"
@@ -60,33 +60,113 @@ def load_engine(settings: dict[str, Any]) -> tuple[Any, str, str]:
     import asr_sherpa
 
     if not asr_sherpa.available():
-        raise RuntimeError(f"sherpa-onnx not installed: {asr_sherpa.import_error()}")
+        err = asr_sherpa.import_error()
+        raise RuntimeError(
+            f"sherpa-onnx Python package not installed ({err}). "
+            f"Fix: cd {plugin_dir()} && ./setup.sh"
+        )
 
     profile = settings.get("sherpaProfile", "auto")
     if profile == "auto":
         profile = asr_sherpa.profile_for_language(settings.get("language", "auto"))
 
-    if not asr_sherpa.models_ready(models_dir(), profile):
-        raise RuntimeError(
-            f"sherpa-onnx models or Silero VAD missing for profile '{profile}'. "
-            f"Run: {plugin_dir() / 'download_models.sh'} {profile}"
-        )
+    reason = asr_sherpa.models_missing_reason(models_dir(), profile)
+    if reason:
+        raise RuntimeError(reason)
 
     provider = settings.get("sherpaProvider", "auto")
     if provider == "auto":
         provider = "cuda" if asr_sherpa.has_cuda() else "cpu"
 
-    engine = asr_sherpa.SherpaEngine(
-        models_dir=models_dir(),
-        profile=profile,
-        provider=provider,
-        language=settings.get("language", "auto"),
-        vad_enabled=bool(settings.get("vadEnabled", True)),
-        vad_threshold=float(settings.get("vadThreshold", 0.4)),
-        auto_type=bool(settings.get("autoType", True)),
-    )
-    engine.load()
+    try:
+        engine = asr_sherpa.SherpaEngine(
+            models_dir=models_dir(),
+            profile=profile,
+            provider=provider,
+            language=settings.get("language", "auto"),
+            vad_enabled=bool(settings.get("vadEnabled", True)),
+            vad_threshold=float(settings.get("vadThreshold", 0.4)),
+            auto_type=bool(settings.get("autoType", True)),
+        )
+        engine.load()
+    except Exception as exc:
+        if provider == "cuda":
+            raise RuntimeError(
+                f"Failed to load sherpa engine with CUDA ({exc}). "
+                "Set sherpa provider to CPU in plugin settings, or fix your NVIDIA/CUDA install."
+            ) from exc
+        raise
     return engine, "sherpa", engine.describe()
+
+
+def diagnose_install() -> dict[str, Any]:
+    """Return JSON-serializable install health checks for the settings UI."""
+    import asr_sherpa
+
+    pd = plugin_dir()
+    settings = read_settings()
+    profile = settings.get("sherpaProfile", "auto")
+    if profile == "auto":
+        profile = asr_sherpa.profile_for_language(settings.get("language", "auto"))
+
+    checks: list[dict[str, Any]] = []
+
+    py_ok = sys.version_info >= (3, 10)
+    checks.append({
+        "id": "python",
+        "ok": py_ok,
+        "label": "Python 3.10+",
+        "detail": f"{sys.version.split()[0]} ({sys.executable})",
+        "fix": "Install Python 3.10 or newer, then run ./setup.sh in the plugin directory",
+    })
+
+    sherpa_ok = asr_sherpa.available()
+    checks.append({
+        "id": "sherpa",
+        "ok": sherpa_ok,
+        "label": "sherpa-onnx package",
+        "detail": "installed" if sherpa_ok else str(asr_sherpa.import_error()),
+        "fix": f"cd {pd} && ./setup.sh",
+    })
+
+    try:
+        import sounddevice  # noqa: F401
+        sd_ok, sd_detail = True, "installed"
+    except Exception as exc:
+        sd_ok, sd_detail = False, str(exc)
+    checks.append({
+        "id": "sounddevice",
+        "ok": sd_ok,
+        "label": "sounddevice (microphone)",
+        "detail": sd_detail,
+        "fix": "Install PortAudio (e.g. pacman -S portaudio), then re-run ./setup.sh",
+    })
+
+    models_reason = asr_sherpa.models_missing_reason(models_dir(), profile)
+    checks.append({
+        "id": "models",
+        "ok": models_reason is None,
+        "label": f"ONNX models ({profile})",
+        "detail": "ready" if models_reason is None else models_reason,
+        "fix": f"cd {pd} && ./download_models.sh {profile}",
+    })
+
+    missing_tools = check_injection_tools()
+    inj_ok = not missing_tools
+    checks.append({
+        "id": "typing",
+        "ok": inj_ok,
+        "label": "wtype + wl-copy",
+        "detail": "available" if inj_ok else f"missing: {', '.join(missing_tools)}",
+        "fix": injection_tools_error_message(missing_tools) if missing_tools else "",
+    })
+
+    return {
+        "ready": all(c["ok"] for c in checks),
+        "pluginDir": str(pd),
+        "profile": profile,
+        "checks": checks,
+    }
 
 
 def cmd_start(timeout: float) -> None:
@@ -171,7 +251,7 @@ def backend_server() -> None:
 
     missing_tools = check_injection_tools()
     if missing_tools:
-        send_status("error", f"Missing tools: {', '.join(missing_tools)}. Install wl-clipboard and wtype.")
+        send_status("error", injection_tools_error_message(missing_tools))
         os.close(pid_fd)
         with contextlib.suppress(Exception):
             PID_FILE.unlink()
@@ -182,7 +262,7 @@ def backend_server() -> None:
         _engine, _engine_name, _engine_label = load_engine(settings)
         send_status("idle", "ready", engine=_engine_label)
     except Exception as exc:
-        send_status("error", f"Failed to load engine: {exc!r}")
+        send_status("error", str(exc))
         os.close(pid_fd)
         with contextlib.suppress(Exception):
             PID_FILE.unlink()
@@ -223,7 +303,7 @@ def backend_server() -> None:
                     else:
                         send_status("idle", "settings updated")
             except Exception as exc:
-                send_status("error", f"server error: {exc!r}")
+                send_status("error", f"server error: {exc}")
                 time.sleep(1)
     finally:
         with contextlib.suppress(Exception):
@@ -242,7 +322,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Noctalia Dictation Backend")
     parser.add_argument(
         "command", nargs="?", default="server",
-        choices=["server", "start", "stop", "status", "exit", "update_settings"],
+        choices=["server", "start", "stop", "status", "exit", "update_settings", "diagnose"],
     )
     args = parser.parse_args()
 
@@ -272,6 +352,8 @@ def main() -> None:
     elif args.command == "update_settings":
         send_signal("update_settings")
         print("ok")
+    elif args.command == "diagnose":
+        print(json.dumps(diagnose_install(), indent=2))
     elif args.command == "status":
         if PID_FILE.exists():
             try:

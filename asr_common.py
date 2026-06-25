@@ -190,3 +190,23 @@ def check_injection_tools() -> list[str]:
     if shutil.which("ydotool"):
         return []
     return missing
+
+
+def injection_tools_error_message(missing: list[str]) -> str:
+    """Actionable error when typing/clipboard tools are unavailable."""
+    parts: list[str] = []
+    if "wtype" in missing:
+        parts.append(
+            "wtype not found (types text into focused windows). "
+            "Install: pacman -S wtype, apt install wtype, or dnf install wtype"
+        )
+    if "wl-copy" in missing:
+        parts.append(
+            "wl-copy not found (session clipboard). "
+            "Install wl-clipboard: pacman -S wl-clipboard, apt install wl-clipboard"
+        )
+    if parts:
+        parts.append(
+            "Alternatively install ydotool for paste fallback, or disable auto-type in plugin settings"
+        )
+    return " ".join(parts)
