@@ -162,8 +162,15 @@ All assets are downloaded from [sherpa-onnx ASR model releases](https://github.c
 
 ## Development
 
+**Recommended workflow:** keep a git clone (e.g. `~/projects/noctalia-dictation`) and symlink it into Noctalia so edits are instant:
+
 ```bash
-# Symlink clone into plugins dir (see Installation)
+ln -sfn ~/projects/noctalia-dictation ~/.config/noctalia/plugins/dictation
+```
+
+`settings.json`, `models/`, and `.venv/` stay in the clone (first two are gitignored). Run `./setup.sh` and `./download_models.sh english` once per machine. Chezmoi users: the dotfiles repo only manages the symlink (`symlink_dictation`), not plugin sources.
+
+```bash
 NOCTALIA_DEBUG=1 qs -c noctalia-shell   # optional: verbose logs
 
 # In Noctalia: Settings → Plugins → Installed → Dictation → enable development mode (flask icon)
