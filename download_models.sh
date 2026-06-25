@@ -8,6 +8,18 @@ BASE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
 
 profile="${1:-all}"
 
+download_vad() {
+  local name="silero_vad.int8.onnx"
+  if [[ -f "${MODELS_DIR}/${name}" ]]; then
+    echo "dictation-models: ${name} already present"
+    return 0
+  fi
+  echo "dictation-models: downloading ${name}..."
+  mkdir -p "${MODELS_DIR}"
+  curl -fL --retry 3 --retry-delay 2 -o "${MODELS_DIR}/${name}" "${BASE_URL}/${name}"
+  echo "dictation-models: installed ${name}"
+}
+
 download_pack() {
   local archive="$1"
   local dir="$2"
@@ -40,12 +52,15 @@ install_multilingual() {
 
 case "${profile}" in
   english|en)
+    download_vad
     install_english
     ;;
   multilingual|multi)
+    download_vad
     install_multilingual
     ;;
   all)
+    download_vad
     install_english
     install_multilingual
     ;;

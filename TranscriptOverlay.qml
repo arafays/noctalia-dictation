@@ -116,6 +116,7 @@ PanelWindow {
 
                 NText {
                     Layout.fillWidth: true
+                    visible: root.committedText.length > 0
                     text: root.committedText
                     color: Color.mOnSurface
                     pointSize: Style.fontSizeM
@@ -134,6 +135,16 @@ PanelWindow {
                     maximumLineCount: 3
                     elide: Text.ElideRight
                     font.italic: true
+                }
+
+                NText {
+                    Layout.fillWidth: true
+                    visible: root.committedText.length === 0 && root.partialText.length === 0
+                    text: pluginApi?.tr("overlay.waiting") || "Waiting for speech..."
+                    color: Color.mOnSurfaceVariant
+                    pointSize: Style.fontSizeM
+                    font.italic: true
+                    opacity: 0.7
                 }
             }
         }

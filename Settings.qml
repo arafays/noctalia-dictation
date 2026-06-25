@@ -203,7 +203,7 @@ ColumnLayout {
 
   NLabel {
     label: pluginApi?.tr("settings.engine") || "Speech engine"
-    description: pluginApi?.tr("settings.engineDesc") || "sherpa-onnx two-pass streaming (Zipformer live + Whisper/SenseVoice finals)."
+    description: pluginApi?.tr("settings.engineDesc") || "sherpa-onnx two-pass streaming with Silero VAD noise gating (Zipformer live + Whisper/SenseVoice finals)."
   }
 
   NComboBox {
@@ -253,7 +253,7 @@ ColumnLayout {
 
   NLabel {
     label: pluginApi?.tr("settings.downloadModels") || "Model download"
-    description: pluginApi?.tr("settings.downloadModelsDesc") || "Run download_models.sh english (or multilingual) once after install"
+    description: pluginApi?.tr("settings.downloadModelsDesc") || "Run download_models.sh english (or multilingual) once after install. Includes Silero VAD (~200KB)."
     Layout.topMargin: Style.marginS
   }
 

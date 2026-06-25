@@ -44,6 +44,11 @@ Item {
         case "error":
             return (pluginApi?.tr("widget.error", {message: message}) || ("Error: " + message))
                 + "\n" + (pluginApi?.tr("widget.errorHint") || "click to retry")
+        case "idle":
+            if (message === "no_speech") {
+                return pluginApi?.tr("widget.noSpeech") || "No speech detected"
+            }
+            return pluginApi?.tr("widget.idle") || "Click to start dictation"
         default:
             return pluginApi?.tr("widget.idle") || "Click to start dictation"
         }

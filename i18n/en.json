@@ -7,7 +7,8 @@
     "recordingHint": "click to stop",
     "transcribing": "Transcribing...",
     "error": "Error: {message}",
-    "errorHint": "click to retry"
+    "errorHint": "click to retry",
+    "noSpeech": "No speech detected"
   },
   "context": {
     "toggle": "Toggle Dictation",
@@ -16,7 +17,8 @@
   "overlay": {
     "listening": "Listening...",
     "finishing": "Finishing...",
-    "hint": "Hotkey or click mic to stop"
+    "hint": "Hotkey or click mic to stop",
+    "waiting": "Waiting for speech..."
   },
   "panel": {
     "title": "Dictation",
@@ -32,13 +34,13 @@
   "settings": {
     "title": "Dictation Settings",
     "engine": "Speech engine",
-    "engineDesc": "sherpa-onnx two-pass streaming (Zipformer live + Whisper/SenseVoice finals).",
+    "engineDesc": "sherpa-onnx two-pass streaming with Silero VAD noise gating (Zipformer live + Whisper/SenseVoice finals).",
     "sherpaProfile": "sherpa model profile",
     "sherpaProfileDesc": "English uses Zipformer+Whisper. Multilingual adds SenseVoice for better non-English accuracy.",
     "sherpaProvider": "sherpa compute provider",
     "sherpaProviderDesc": "ONNX Runtime provider for sherpa-onnx",
     "downloadModels": "Model download",
-    "downloadModelsDesc": "Run download_models.sh english (or multilingual) once after install",
+    "downloadModelsDesc": "Run download_models.sh english (or multilingual) once after install. Includes Silero VAD (~200KB).",
     "language": "Language",
     "languageDesc": "Auto-detect or pick a specific language",
     "timeout": "Safety timeout",
@@ -67,6 +69,7 @@
   },
   "notification": {
     "copied": "Transcription copied to clipboard",
-    "timeout": "Backend not ready, try again"
+    "timeout": "Backend not ready, try again",
+    "noSpeech": "No speech detected"
   }
 }

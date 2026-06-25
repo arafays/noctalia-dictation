@@ -382,7 +382,7 @@ Item {
           }
 
           if (root.pendingStart && data.state === "idle" &&
-              (data.message === "ready" || data.message === "settings updated" || data.message === "silence" || data.message === "copied")) {
+              (data.message === "ready" || data.message === "settings updated" || data.message === "silence" || data.message === "copied" || data.message === "no_speech")) {
             root.pendingStart = false
             _pendingStartTimeout.stop()
             root.startRecording()
@@ -394,10 +394,12 @@ Item {
           }
         }
 
-        if (data.state === "idle" && data.message === "copied" && data.text && data.text.length > 0) {
-          root.addHistoryEntry(data.text)
-          ToastService.showNotice(pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
-        } else if (data.state === "idle" && data.text && data.text.length > 0 && data.message !== "copied") {
+          if (data.state === "idle" && data.message === "copied" && data.text && data.text.length > 0) {
+            root.addHistoryEntry(data.text)
+            ToastService.showNotice(pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
+          } else if (data.state === "idle" && data.message === "no_speech") {
+            ToastService.showNotice(pluginApi?.tr("notification.noSpeech") || "No speech detected")
+          } else if (data.state === "idle" && data.text && data.text.length > 0 && data.message !== "copied") {
           root.addHistoryEntry(data.text)
         }
       } catch (e) {

@@ -66,7 +66,7 @@ def load_engine(settings: dict[str, Any]) -> tuple[Any, str, str]:
 
     if not asr_sherpa.models_ready(models_dir(), profile):
         raise RuntimeError(
-            f"sherpa-onnx models missing for profile '{profile}'. "
+            f"sherpa-onnx models or Silero VAD missing for profile '{profile}'. "
             f"Run: {plugin_dir() / 'download_models.sh'} {profile}"
         )
 

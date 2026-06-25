@@ -9,12 +9,14 @@ Local offline voice dictation for [Noctalia Shell](https://docs.noctalia.dev/) u
 | 1st (streaming) | Zipformer transducer | ~100ms partial updates for live UI |
 | 2nd (offline) | Whisper (EN) or SenseVoice (multilingual) | Accurate finals typed + clipboard |
 
-Lower latency live feedback, better segment accuracy, and true streaming without re-transcribing the whole buffer every second.
+Lower latency live feedback, better segment accuracy, Silero VAD noise gating, and true streaming without re-transcribing the whole buffer every second.
 
 ## Features
 
 - **Session toggle** — hotkey or mic; no silence auto-stop (optional safety timeout)
-- **Live transcript** — bar, overlay, panel
+- **Silero VAD** — gates mic input before ASR; reduces noise hallucinations
+- **Transcript cleaning** — strips model tags and non-speech annotations on partials and finals
+- **Live transcript** — bar, overlay, panel with committed vs partial styling
 - **Text injection** — `wtype` for committed text; clipboard paste fallback
 - **Full-session clipboard** on stop
 
@@ -25,7 +27,7 @@ git clone https://github.com/arafays/noctalia-dictation.git
 cp -r noctalia-dictation ~/.config/noctalia/plugins/dictation
 cd ~/.config/noctalia/plugins/dictation
 ./setup.sh
-./download_models.sh english    # ~150MB, recommended first
+./download_models.sh english    # ~150MB + VAD, recommended first
 # ./download_models.sh multilingual   # ~700MB, for non-English
 ```
 
@@ -68,6 +70,13 @@ bind=Mod+Shift+D { spawn-sh "qs -c noctalia-shell ipc call plugin:dictation togg
 - Optional: CUDA for faster ONNX inference
 
 ## Changelog
+
+### v0.3.0
+
+- Silero VAD pre-ASR speech gating with hangover (silero_vad.int8.onnx)
+- `clean_transcript()` applied to second-pass commits before wtype injection
+- Reject short/no-speech segments; distinguish `no_speech` vs `silence` session outcomes
+- UX: committed vs partial transcript styling in overlay and panel; finishing state on stop
 
 ### v0.2.0
 

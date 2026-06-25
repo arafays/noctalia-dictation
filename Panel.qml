@@ -99,20 +99,54 @@ Item {
             font.weight: Font.Medium
           }
 
-          NText {
+          ColumnLayout {
             Layout.fillWidth: true
-            text: {
-              var mi = pluginApi?.mainInstance
-              var committed = mi?.liveTranscript || ""
-              var partial = mi?.partialTranscript || ""
-              if (committed && partial) return committed + " " + partial
-              return committed || partial || (pluginApi?.tr("panel.listening") || "Listening...")
+            spacing: 2
+
+            NText {
+              Layout.fillWidth: true
+              visible: {
+                var mi = pluginApi?.mainInstance
+                return (mi?.liveTranscript || "").length > 0
+              }
+              text: pluginApi?.mainInstance?.liveTranscript || ""
+              color: Color.mOnErrorContainer
+              pointSize: Style.fontSizeM
+              wrapMode: Text.WordWrap
+              maximumLineCount: 3
+              elide: Text.ElideRight
             }
-            color: Color.mOnErrorContainer
-            pointSize: Style.fontSizeM
-            wrapMode: Text.WordWrap
-            maximumLineCount: 4
-            elide: Text.ElideRight
+
+            NText {
+              Layout.fillWidth: true
+              visible: {
+                var mi = pluginApi?.mainInstance
+                return (mi?.partialTranscript || "").length > 0
+              }
+              text: pluginApi?.mainInstance?.partialTranscript || ""
+              color: Color.mOnErrorContainer
+              pointSize: Style.fontSizeM
+              wrapMode: Text.WordWrap
+              maximumLineCount: 2
+              elide: Text.ElideRight
+              font.italic: true
+              opacity: 0.75
+            }
+
+            NText {
+              Layout.fillWidth: true
+              visible: {
+                var mi = pluginApi?.mainInstance
+                var committed = mi?.liveTranscript || ""
+                var partial = mi?.partialTranscript || ""
+                return committed.length === 0 && partial.length === 0
+              }
+              text: pluginApi?.tr("panel.listening") || "Listening..."
+              color: Color.mOnErrorContainer
+              pointSize: Style.fontSizeM
+              font.italic: true
+              opacity: 0.7
+            }
           }
         }
       }
