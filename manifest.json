@@ -8,6 +8,7 @@
   "license": "MIT",
   "repository": "https://github.com/arafays/noctalia-dictation",
   "description": "Local offline dictation with sherpa-onnx two-pass streaming (Zipformer live + Whisper/SenseVoice finals), Silero VAD noise gating, live overlay, wtype injection, session clipboard.",
+  "tags": ["Bar", "Panel", "Productivity", "Audio"],
   "entryPoints": {
     "barWidget": "BarWidget.qml",
     "panel": "Panel.qml",

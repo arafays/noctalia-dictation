@@ -41,3 +41,14 @@ The second-pass Whisper models are **sherpa-onnx ONNX exports**, not the `faster
 
 - Live: `~/.config/noctalia/plugins/dictation/`
 - Chezmoi: `~/.local/share/chezmoi/private_dot_config/noctalia/plugins/dictation/`
+- Dev symlink: `ln -sfn <repo> ~/.config/noctalia/plugins/dictation`
+
+## Noctalia plugin install (v4)
+
+- Discovery: `PluginRegistry` scans `~/.config/noctalia/plugins/*/manifest.json`; enable in **Settings → Plugins → Installed**.
+- Official source (default): `https://github.com/noctalia-dev/noctalia-plugins` — plugins install as plain ids (`dictation/`).
+- Custom sources: added in **Settings → Plugins → Sources**; install to `<6-char-hash>:<id>/` folders.
+- State file: `~/.config/noctalia/plugins.json` (v2: `sources` + `states`).
+- This repo is standalone (files at repo root). Manual copy/symlink until merged into `noctalia-plugins` as `dictation/`.
+- Official listing: PR to [noctalia-plugins](https://github.com/noctalia-dev/noctalia-plugins) (+ `preview.png` 960×540 for noctalia.dev).
+- Post-install (not done by shell): `./setup.sh`, `./download_models.sh <profile>`.
