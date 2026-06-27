@@ -25,6 +25,8 @@ Item {
     readonly property bool showOverlay: cfg.showOverlay ?? defaults.showOverlay ?? true
     readonly property bool autoType: cfg.autoType ?? defaults.autoType ?? true
     readonly property bool vadEnabled: cfg.vadEnabled ?? defaults.vadEnabled ?? true
+    readonly property string engine: cfg.engine ?? defaults.engine ?? "auto"
+    readonly property bool isFwEngine: root.engine === "faster_whisper"
 
     readonly property string screenName: screen?.name ?? ""
     readonly property string barPosition: Settings.getBarPositionForScreen(screenName)
@@ -47,10 +49,58 @@ Item {
         }
     }
 
-    function openSettings() {
-        if (pluginApi?.manifest) {
-            BarService.openPluginSettings(screen, pluginApi.manifest)
+    function openSettingsEntry(entryPoint) {
+        if (!pluginApi?.manifest) return
+        var popupMenuWindow = PanelService.getPopupMenuWindow(screen)
+        if (!popupMenuWindow) {
+            Logger.e("Dictation", "No popup menu window for settings")
+            return
         }
+        var component = Qt.createComponent(Quickshell.shellDir + "/Widgets/NPluginSettingsPopup.qml")
+        function instantiateAndOpen() {
+            var dialog = component.createObject(popupMenuWindow.dialogParent, {
+                "showToastOnSave": true,
+                "screen": screen
+            })
+            if (!dialog) {
+                Logger.e("Dictation", "Failed to create settings dialog")
+                return
+            }
+            popupMenuWindow.hasDialog = true
+            dialog.closed.connect(() => {
+                popupMenuWindow.hasDialog = false
+                popupMenuWindow.close()
+                dialog.destroy()
+            })
+            popupMenuWindow.open()
+            dialog.openPluginSettings(pluginApi.manifest, entryPoint || "settings")
+        }
+        if (component.status === Component.Ready) {
+            instantiateAndOpen()
+        } else if (component.status === Component.Error) {
+            Logger.e("Dictation", "Error loading settings dialog:", component.errorString())
+        } else {
+            component.statusChanged.connect(function () {
+                if (component.status === Component.Ready) {
+                    instantiateAndOpen()
+                } else if (component.status === Component.Error) {
+                    Logger.e("Dictation", "Error loading settings dialog:", component.errorString())
+                }
+            })
+        }
+    }
+
+    function openPluginSettings() {
+        if (!pluginApi?.manifest?.entryPoints?.settings) return
+        BarService.openPluginSettings(screen, pluginApi.manifest)
+    }
+
+    function openBarSettings() {
+        if (!pluginApi?.manifest?.entryPoints?.barWidgetSettings) {
+            openPluginSettings()
+            return
+        }
+        openSettingsEntry("barWidgetSettings")
     }
 
     readonly property string tooltipText: {
@@ -176,17 +226,16 @@ Item {
                 }
                 applyUiScale: false
 
-                RotationAnimator on rotation {
-                    running: root.state === "starting" || root.state === "transcribing"
+                readonly property bool spinning: root.state === "starting" || root.state === "transcribing"
+                property real spinAngle: 0
+                rotation: spinning ? spinAngle : 0
+
+                RotationAnimator on spinAngle {
+                    running: iconItem.spinning
                     from: 0; to: 360
                     duration: 1000
                     loops: Animation.Infinite
-                }
-                Binding {
-                    target: iconItem
-                    property: "rotation"
-                    value: 0
-                    when: root.state !== "starting" && root.state !== "transcribing"
+                    onRunningChanged: if (!running) iconItem.spinAngle = 0
                 }
 
                 Behavior on color {
@@ -247,14 +296,23 @@ Item {
             },
             {
                 "label": (root.vadEnabled
-                    ? (pluginApi?.tr("context.vadOn") || "Noise gate (VAD): on")
-                    : (pluginApi?.tr("context.vadOff") || "Noise gate (VAD): off")),
+                    ? (root.isFwEngine
+                        ? (pluginApi?.tr("context.vadOnFw") || "Silence detection: on")
+                        : (pluginApi?.tr("context.vadOnSherpa") || pluginApi?.tr("context.vadOn") || "Noise gate (VAD): on"))
+                    : (root.isFwEngine
+                        ? (pluginApi?.tr("context.vadOffFw") || "Silence detection: off")
+                        : (pluginApi?.tr("context.vadOffSherpa") || pluginApi?.tr("context.vadOff") || "Noise gate (VAD): off"))),
                 "action": "toggle-vad",
                 "icon": "filter"
             },
             {
-                "label": pluginApi?.tr("actions.widget-settings") || I18n.tr("actions.widget-settings"),
-                "action": "widget-settings",
+                "label": pluginApi?.tr("context.barSettings") || "Bar quick settings",
+                "action": "bar-settings",
+                "icon": "adjustments"
+            },
+            {
+                "label": pluginApi?.tr("context.pluginSettings") || "Plugin settings",
+                "action": "plugin-settings",
                 "icon": "settings"
             }
         ]
@@ -275,8 +333,10 @@ Item {
                 root.saveQuickSetting("autoType", !root.autoType)
             } else if (action === "toggle-vad") {
                 root.saveQuickSetting("vadEnabled", !root.vadEnabled)
-            } else if (action === "widget-settings") {
-                root.openSettings()
+            } else if (action === "bar-settings") {
+                root.openBarSettings()
+            } else if (action === "plugin-settings") {
+                root.openPluginSettings()
             }
         }
     }

@@ -30,6 +30,12 @@ Item {
   readonly property string venvPython: pluginDir + "/.venv/bin/python"
   readonly property string backendScript: pluginDir + "/dictation_backend.py"
   readonly property string setupScript: pluginDir + "/setup.sh"
+  readonly property int backendLaunchTimeoutMs: {
+    var engine = pluginApi?.pluginSettings?.engine
+        || pluginApi?.manifest?.metadata?.defaultSettings?.engine
+        || "auto"
+    return engine === "faster_whisper" ? 180000 : 60000
+  }
 
   function setupFixHint() {
     return "cd " + pluginDir + " && ./setup.sh"
@@ -50,9 +56,49 @@ Item {
   }
 
   property bool _launchingBackend: false
+  property bool _restartAfterStop: false
   property string backendStdout: ""
   property string backendStderr: ""
+  property string backendLog: ""
+  readonly property int maxLogChars: 12000
   property bool _useSystemPython: false
+
+  function appendLog(line) {
+    var d = new Date()
+    var ts = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2)
+    var entry = "[" + ts + "] " + line
+    backendLog = backendLog ? (backendLog + "\n" + entry) : entry
+    if (backendLog.length > maxLogChars) {
+      backendLog = backendLog.slice(backendLog.length - maxLogChars)
+    }
+  }
+
+  function finishStopTransition(restart) {
+    if (backendState !== "stopping") {
+      return
+    }
+    _stopGuardTimer.stop()
+    _launchingBackend = false
+    _launchGuardTimer.stop()
+    backendState = "stopped"
+    if (!restart) {
+      backendMessage = ""
+    }
+    if (restart) {
+      appendLog("Restarting backend...")
+      Qt.callLater(ensureBackend)
+    } else {
+      appendLog("Backend stopped")
+    }
+  }
+
+  function stopBackendInternal() {
+    backendState = "stopping"
+    backendMessage = "stopping"
+    appendLog("Stopping backend...")
+    Quickshell.execDetached(pythonCmd(["exit"]))
+    _stopGuardTimer.restart()
+  }
 
   Process {
     id: _probeProcess
@@ -110,7 +156,7 @@ Item {
 
   Timer {
     id: _launchGuardTimer
-    interval: 60000
+    interval: root.backendLaunchTimeoutMs
     onTriggered: {
       root._launchingBackend = false
       if (root.backendState === "starting") {
@@ -118,7 +164,7 @@ Item {
         var timeoutHint = pluginApi?.tr("errors.backendTimeout") ||
             "Backend failed to start (timeout). Open plugin settings → Verify installation, or run: " + root.setupFixHint()
         root.backendMessage = timeoutHint
-        Logger.e("Dictation", "backend launch timed out after 60s")
+        Logger.e("Dictation", "backend launch timed out after", root.backendLaunchTimeoutMs / 1000, "s")
         root.sendErrorNotification(timeoutHint)
       }
     }
@@ -143,9 +189,21 @@ Item {
   }
 
   Timer {
-    id: _restartDelayTimer
-    interval: 500
-    onTriggered: root.ensureBackend()
+    id: _stopGuardTimer
+    interval: 5000
+    onTriggered: {
+      if (root.backendState !== "stopping") {
+        return
+      }
+      root.appendLog("WARN: stop timed out — forcing shutdown")
+      Quickshell.execDetached(root.pythonCmd(["exit"]))
+      if (_backendProcess.running) {
+        _backendProcess.running = false
+      }
+      var restart = root._restartAfterStop
+      root._restartAfterStop = false
+      root.finishStopTransition(restart)
+    }
   }
 
   Timer {
@@ -167,8 +225,12 @@ Item {
     onTriggered: {
       var outText = _backendStdoutCol.text || ""
       var errText = _backendStderrCol.text || ""
-      if (outText && outText !== root.backendStdout) root.backendStdout = outText
-      if (errText && errText !== root.backendStderr) root.backendStderr = errText
+      if (outText !== root.backendStdout) {
+        root.backendStdout = outText
+      }
+      if (errText !== root.backendStderr) {
+        root.backendStderr = errText
+      }
     }
   }
 
@@ -180,6 +242,9 @@ Item {
       onStreamFinished: {
         Logger.d("Dictation", "backend stdout:", this.text)
         root.backendStdout = this.text || ""
+        if (this.text && this.text.trim().length > 0) {
+          root.appendLog("stdout: " + this.text.trim().split("\n").pop())
+        }
       }
     }
     stderr: StdioCollector {
@@ -187,6 +252,14 @@ Item {
       onStreamFinished: {
         Logger.w("Dictation", "backend stderr:", this.text)
         root.backendStderr = this.text || ""
+        if (this.text && this.text.trim().length > 0) {
+          var lines = this.text.trim().split("\n")
+          for (var i = Math.max(0, lines.length - 5); i < lines.length; i++) {
+            if (lines[i].trim().length > 0) {
+              root.appendLog(lines[i].trim())
+            }
+          }
+        }
       }
     }
 
@@ -197,29 +270,54 @@ Item {
         root.backendState = "error"
         root.backendMessage = pluginApi?.tr("errors.backendExited") ||
             "Backend exited unexpectedly. Check plugin settings → Logs, then Verify installation."
+        root.appendLog("ERROR: backend exited during startup")
         Logger.e("Dictation", "backend process exited unexpectedly, stderr:", _backendProcess.stderr?.text || "(none)")
         _retryTimer.restart()
+      } else if (!running && root.backendState === "stopping") {
+        root._launchingBackend = false
+        _launchGuardTimer.stop()
+        Logger.i("Dictation", "backend process stopped (stopping)")
+        var restart = root._restartAfterStop
+        root._restartAfterStop = false
+        root.finishStopTransition(restart)
       } else if (!running) {
         root._launchingBackend = false
         _launchGuardTimer.stop()
         Logger.i("Dictation", "backend process stopped")
+        root.appendLog("Backend process exited")
       }
     }
   }
 
   Process {
     id: _diagnoseProcess
-    command: root.pythonCmd(["diagnose"])
 
     onRunningChanged: root.diagnoseRunning = running
 
     stdout: StdioCollector {
       id: _diagnoseStdout
       onStreamFinished: {
+        var raw = (text || "").trim()
+        if (!raw) {
+          root.appendLog("WARN: diagnose produced no output")
+          root._lastDiagnose = {
+            "ready": false,
+            "checks": [{
+              "id": "diagnose",
+              "ok": false,
+              "label": "Installation check",
+              "detail": "diagnose command returned no output",
+              "fix": "Check plugin settings → Logs, then run: cd " + root.pluginDir + " && ./.venv/bin/python dictation_backend.py diagnose"
+            }]
+          }
+          root._diagnoseRev++
+          return
+        }
         try {
-          var data = JSON.parse(text)
+          var data = JSON.parse(raw)
           root._lastDiagnose = data
           root._diagnoseRev++
+          root.appendLog("Installation check: " + (data.ready ? "all passed" : "issues found"))
           if (!data.ready && data.checks) {
             for (var i = 0; i < data.checks.length; i++) {
               var c = data.checks[i]
@@ -229,7 +327,28 @@ Item {
             }
           }
         } catch (e) {
-          Logger.w("Dictation", "diagnose parse failed:", e)
+          root.appendLog("ERROR: diagnose parse failed: " + e)
+          root._lastDiagnose = {
+            "ready": false,
+            "checks": [{
+              "id": "diagnose",
+              "ok": false,
+              "label": "Installation check",
+              "detail": raw.split("\n").pop(),
+              "fix": "See plugin settings → Logs"
+            }]
+          }
+          root._diagnoseRev++
+          Logger.w("Dictation", "diagnose parse failed:", e, raw)
+        }
+      }
+    }
+
+    stderr: StdioCollector {
+      id: _diagnoseStderr
+      onStreamFinished: {
+        if (text && text.trim().length > 0) {
+          root.appendLog("diagnose stderr: " + text.trim().split("\n").pop())
         }
       }
     }
@@ -241,7 +360,8 @@ Item {
 
   function runDiagnose() {
     if (!pluginDir) return
-    _diagnoseProcess.exec(root.pythonCmd(["diagnose"]))
+    appendLog("Running installation checks...")
+    _diagnoseProcess.exec(pythonCmd(["diagnose"]))
   }
 
   function pythonCmd(args) {
@@ -259,10 +379,15 @@ Item {
   }
 
   function launchBackend() {
+    if (_backendProcess.running) {
+      appendLog("Backend process already running")
+      return
+    }
     if (backendState === "stopped" || backendState === "error" || backendState === "setup") {
       _launchingBackend = true
       backendState = "starting"
       backendMessage = "launching backend"
+      appendLog("Launching backend: " + JSON.stringify(pythonCmd(["server"])))
       _launchGuardTimer.restart()
       var cmd = pythonCmd(["server"])
       Logger.i("Dictation", "launching backend:", JSON.stringify(cmd))
@@ -277,28 +402,47 @@ Item {
       checkVenv()
       return
     }
-    if ((backendState === "stopped" || backendState === "error" || backendState === "setup" || backendState === "stopping") && !_launchingBackend) {
+    if (backendState === "stopping" || _backendProcess.running) {
+      appendLog("Waiting for backend stop before start")
+      return
+    }
+    if ((backendState === "stopped" || backendState === "error" || backendState === "setup") && !_launchingBackend) {
       _retryCount = 0
       launchBackend()
     }
   }
 
   function restartBackend() {
-    Quickshell.execDetached(pythonCmd(["exit"]))
-    backendState = "stopping"
-    _venvReady = true
+    appendLog("Restart requested")
     _retryCount = 0
-    _restartDelayTimer.restart()
+    _venvReady = true
+    if (_backendProcess.running || backendState === "idle" || backendState === "starting"
+        || backendState === "recording" || backendState === "transcribing" || backendState === "error") {
+      _restartAfterStop = true
+      stopBackendInternal()
+    } else if (backendState === "stopping") {
+      _restartAfterStop = true
+      _stopGuardTimer.restart()
+    } else {
+      ensureBackend()
+    }
   }
 
   function stopBackend() {
-    Quickshell.execDetached(pythonCmd(["exit"]))
-    backendState = "stopping"
+    _restartAfterStop = false
+    if (_backendProcess.running || backendState === "idle" || backendState === "starting"
+        || backendState === "recording" || backendState === "transcribing") {
+      stopBackendInternal()
+    } else {
+      backendState = "stopped"
+      backendMessage = ""
+    }
   }
 
   function clearLogs() {
     backendStdout = ""
     backendStderr = ""
+    backendLog = ""
   }
 
   function startRecording() {
@@ -429,6 +573,15 @@ Item {
         var data = JSON.parse(jsonStr)
         Logger.d("Dictation", "IPC setStatus:", JSON.stringify(data))
         if (data.state !== undefined) {
+          var ipcMsg = data.message || ""
+          root.appendLog("IPC " + data.state + (ipcMsg ? ": " + ipcMsg : ""))
+
+          if (data.state === "stopped" && root.backendState === "stopping") {
+            var restart = root._restartAfterStop
+            root._restartAfterStop = false
+            root.finishStopTransition(restart)
+          }
+
           root.backendState = data.state
           if (data.state === "idle" && data.message === "ready" && data.engine) {
             root.backendMessage = data.engine
@@ -525,6 +678,7 @@ Item {
     if (pluginApi) {
       loadHistory()
     }
+    appendLog("Dictation plugin loaded")
     Logger.i("Dictation", "plugin loaded, pluginDir:", pluginDir)
     Logger.i("Dictation", "backendScript:", backendScript, "venvPython:", venvPython)
     // Probe system Python first; cleanup and backend launch happen in the probe callback

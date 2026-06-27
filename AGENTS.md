@@ -1,14 +1,53 @@
 # Dictation Plugin — Development Guide (v0.4.5)
 
+## Layout
+
+```
+manifest.json, i18n/          ← Noctalia plugin metadata (no Python install)
+ui/                           ← QML frontend (BarWidget, Main, Settings, …)
+backend/                      ← Python backend (requires ./setup.sh venv)
+  server.py                   ← process entry + signal IPC
+  config.py, paths.py         ← settings + plugin root paths
+  ipc/                        ← qs IPC status to QML
+  output/                     ← wtype + clipboard injection
+  transcript/                 ← ASR output cleaning
+  engines/
+    registry.py               ← register engines here
+    sherpa/                   ← default (two-pass Zipformer + Whisper/SenseVoice)
+    faster_whisper/           ← CTranslate2 Whisper with pause segmentation
+dictation_backend.py          ← thin CLI shim (Main.qml invokes this)
+setup.sh, download_models.sh  ← install scripts (venv + ONNX models)
+models/, .venv/               ← local artifacts (gitignored)
+```
+
 ## Architecture
 
 ```
-BarWidget / TranscriptOverlay / Panel
-        ↕ Main.qml (IPC)
-        ↕ dictation_backend.py
-        ├─ asr_sherpa.py   ← two-pass (Zipformer + Whisper/SenseVoice) + Silero VAD gate
-        └─ asr_common.py   ← transcript cleaning, wtype injection, clipboard, IPC
+ui/Main.qml (IPC)
+        ↕ dictation_backend.py → backend/server.py
+        ↕ backend/engines/registry.py
+        ├─ sherpa/  ← two-pass (Zipformer + Whisper/SenseVoice) + Silero VAD
+        │    ├─ engine.py, session.py, vad.py, packs.py
+        └─ faster_whisper/  ← CTranslate2 Whisper, RMS silence gate, pause re-decode
+           ├─ engine.py, session.py
+           └─ transcript/ + output/ for cleaning and typing
 ```
+
+## Adding a new ASR engine
+
+1. Create `backend/engines/<name>/` with:
+   - `ENGINE_ID`, `available()`, `import_error()`, `create_engine()`, `record_session()`, `diagnose_checks()`
+2. Register in `backend/engines/registry.py` (`ENGINES` dict)
+3. Expose in `ui/Settings.qml` if users should pick it in the UI
+
+## Settings UI (Noctalia entry points)
+
+| Entry point | File | Where it opens | Contents |
+|-------------|------|----------------|----------|
+| `settings` | `ui/Settings.qml` | Settings → Plugins, bar widget gear (Settings → Bar), context menu **Plugin settings** | Speech engine, model profiles, language, behavior, hotkeys, install checks, debug |
+| `barWidgetSettings` | `ui/BarWidgetSettings.qml` | Context menu **Bar quick settings** only (not the bar-layout gear — Noctalia opens `settings` for plugin widgets) | Overlay, auto-type, VAD toggles |
+
+Bar context menu also exposes one-click toggles for overlay, auto-type, and VAD. Both settings dialogs use `pluginApi.pluginSettings` (global per plugin, not per bar instance).
 
 ## STT engine: sherpa-onnx two-pass + Silero VAD
 
@@ -29,6 +68,15 @@ Models in `<pluginDir>/models/`, downloaded via `download_models.sh`.
 VAD defaults: threshold 0.4, min speech 0.2s, min silence 0.3s, hangover 0.35s.
 
 The second-pass Whisper models are **sherpa-onnx ONNX exports**, not the `faster-whisper` Python library.
+
+## Dependencies
+
+| Layer | Requires install? | What |
+|-------|-------------------|------|
+| **Noctalia / QML** | No (ships with plugin) | `ui/*.qml`, `manifest.json`, `i18n/` |
+| **System** | Yes | Python 3.10+, `wtype`, `wl-copy`, PortAudio, `curl`, `tar` |
+| **Python venv** | Yes (`./setup.sh`) | `sherpa-onnx`, `faster-whisper`, `sounddevice`, `numpy` |
+| **Models** | Yes (`./download_models.sh`) | ONNX files in `models/` (sherpa only; fw uses Hugging Face cache) |
 
 ## IPC
 

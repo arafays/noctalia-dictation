@@ -1,0 +1,29 @@
+[project]
+name = "noctalia-dictation"
+version = "0.4.5"
+description = "Local offline dictation plugin for Noctalia Shell"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = [".", "backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["SIM108"]  # allow if/else over ternary where clearer
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pyright]
+pythonVersion = "3.10"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+include = ["backend", "dictation_backend.py"]
+reportMissingImports = true
+reportMissingTypeStubs = false

@@ -1,6 +1,17 @@
 # noctalia-dictation
 
-Local offline voice dictation for [Noctalia Shell](https://docs.noctalia.dev/) using **sherpa-onnx two-pass streaming**.
+Local offline voice dictation for [Noctalia Shell](https://docs.noctalia.dev/) with a choice of **sherpa-onnx two-pass streaming** (default) or **faster-whisper** (CTranslate2).
+
+## Speech engines
+
+| Engine | Best for | Models | Live partials |
+|--------|----------|--------|---------------|
+| **sherpa-onnx** (default) | Low latency, ONNX on CPU/CUDA | `download_models.sh` → `models/` | Zipformer streaming pass (~100 ms) |
+| **faster-whisper** | Accented / ESL English, Whisper accuracy | Hugging Face cache (auto-download on first use) | In-phrase preview while decoding |
+
+Pick **sherpa-onnx** for the bundled two-pass pipeline and offline ONNX models. Pick **faster-whisper** in **Settings → Speech engine** when accented or non-native English needs better recognition — it re-decodes on pauses instead of sherpa’s Zipformer + Whisper/SenseVoice stack.
+
+> **faster-whisper first run:** The selected Whisper size (`small` recommended for ESL) downloads automatically on first backend start. Allow **1–3 minutes** extra on a slow connection; the bar may show “Starting backend…” longer than with sherpa.
 
 ## Why sherpa-onnx two-pass?
 
@@ -85,7 +96,7 @@ Do not copy or rsync over an existing dev symlink — Noctalia reads the symlink
 
 ### 2. Install Python dependencies
 
-Creates `.venv/` in the plugin directory and installs `sherpa-onnx`, `sounddevice`, and `numpy`:
+Creates `.venv/` in the plugin directory and installs `sherpa-onnx`, `faster-whisper`, `sounddevice`, and `numpy`:
 
 ```bash
 ./setup.sh
@@ -97,7 +108,9 @@ Uses `uv` when available, otherwise `python3 -m venv` + `pip`. Expect **~1–3 m
 
 If it fails, the script prints `dictation-setup: error:` with a fix hint (e.g. install Python 3.10+, PortAudio, or check network).
 
-### 3. Download speech models
+### 3. Download speech models (sherpa-onnx)
+
+Required for **sherpa-onnx** only. **faster-whisper** downloads its model on first use (skip this step if you use faster-whisper exclusively).
 
 ```bash
 ./download_models.sh english       # ~150 MB + VAD — recommended first (~2–5 min)
@@ -194,11 +207,15 @@ Open **Settings → Plugins → Installed → Dictation** (gear icon), or use th
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Engine | auto | sherpa-onnx two-pass |
-| sherpa profile | auto | `english` / `multilingual` model pack |
-| sherpa provider | auto | CPU or CUDA ONNX Runtime |
-| Language | auto | Influences profile + second-pass language |
+| Engine | auto | `sherpa-onnx` two-pass (default) or `faster-whisper` |
+| sherpa profile | auto | `english` / `multilingual` model pack (sherpa only) |
+| sherpa provider | auto | CPU or CUDA ONNX Runtime (sherpa only) |
+| Whisper model size | small | faster-whisper model; downloads on first use |
+| faster-whisper device | auto | CPU or CUDA |
+| Compute type | auto | int8 on CPU; float16 variants on GPU (fw only) |
+| Language | auto | Influences profile + decode language |
 | Safety timeout | 0 | `0` = unlimited session length (seconds) |
+| VAD / silence gate | on | Silero VAD (sherpa) or RMS silence detection (fw) |
 
 ## Models
 
@@ -208,6 +225,20 @@ Open **Settings → Plugins → Installed → Dictation** (gear icon), or use th
 | `multilingual` | streaming-zipformer-bilingual-zh-en | sense-voice int8 | silero_vad.int8.onnx |
 
 All assets are downloaded from [sherpa-onnx ASR model releases](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models).
+
+## Project layout
+
+| Path | Role | Install needed? |
+|------|------|-----------------|
+| `manifest.json`, `i18n/` | Noctalia plugin metadata | No |
+| `ui/` | QML frontend (bar, overlay, settings, panel) | No |
+| `backend/` | Python ASR server, engines, IPC, typing | Yes (`./setup.sh`) |
+| `dictation_backend.py` | CLI entry point invoked by `ui/Main.qml` | — |
+| `setup.sh`, `requirements.txt` | Python venv + pip deps | Run once |
+| `download_models.sh`, `models/` | ONNX speech models | Run once |
+| `.venv/` | Local Python environment (gitignored) | Created by setup |
+
+To try a different ASR backend in code, add a module under `backend/engines/<name>/` and register it in `backend/engines/registry.py`. See [AGENTS.md](./AGENTS.md).
 
 ## Development
 
@@ -292,6 +323,11 @@ cat ~/.config/noctalia/plugins/dictation/settings.json
 
 ### v0.4.5
 
+- Backend refactor: `backend/` package (engines, IPC, output, transcript); thin `dictation_backend.py` shim
+- **faster-whisper** engine re-added (CTranslate2 Whisper); selectable in settings alongside sherpa-onnx
+- Engine-aware VAD UI: Silero sensitivity for sherpa; silence/pause gate labels for faster-whisper
+- Fix `update_settings` restart detection (compare against cached engine-load settings)
+- Backend launch timeout extended to 180s when faster-whisper is selected (model download on first run)
 - Actionable install/error messages in backend, bar widget, and settings toasts
 - **Verify installation** checklist in plugin settings (`dictation_backend.py diagnose`)
 - `models_missing_reason()` with exact missing files and download command

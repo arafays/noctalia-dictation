@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "TheQtCompany.qt-qml",
+    "editorconfig.editorconfig"
+  ]
+}

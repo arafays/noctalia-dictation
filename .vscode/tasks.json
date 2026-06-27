@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ruff: check",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/ruff",
+      "args": ["check", "."],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "ruff: format",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/ruff",
+      "args": ["format", "."],
+      "group": "none",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "qmllint: all QML",
+      "type": "shell",
+      "command": "find ui -name '*.qml' -print0 | xargs -0 qmllint -U",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

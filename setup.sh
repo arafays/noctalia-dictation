@@ -57,9 +57,16 @@ else
   exit 1
 fi
 
-if ! "$VENV_DIR/bin/python" -c 'import sherpa_onnx, sounddevice, numpy' 2>/dev/null; then
-  echo "dictation-setup: error: sherpa-onnx, sounddevice, or numpy failed to import" >&2
+if ! "$VENV_DIR/bin/python" -c 'import sounddevice, numpy' 2>/dev/null; then
+  echo "dictation-setup: error: sounddevice or numpy failed to import" >&2
   echo "dictation-setup: fix: install PortAudio (pacman -S portaudio), then re-run ./setup.sh" >&2
+  exit 1
+fi
+
+if ! "$VENV_DIR/bin/python" -c 'import sherpa_onnx' 2>/dev/null \
+    && ! "$VENV_DIR/bin/python" -c 'import faster_whisper' 2>/dev/null; then
+  echo "dictation-setup: error: no STT engine installed (need sherpa-onnx and/or faster-whisper)" >&2
+  echo "dictation-setup: fix: re-run ./setup.sh and check pip output" >&2
   exit 1
 fi
 
