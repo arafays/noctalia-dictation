@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 
@@ -34,9 +36,14 @@ def _type_text_paste(text: str) -> None:
             continue
 
 
+def _log_injection(msg: str) -> None:
+    print(f"dictation: {msg}", file=sys.stderr, flush=True)
+
+
 def _type_with_wtype(text: str) -> bool:
     if not shutil.which("wtype") or not text:
         return False
+    env = os.environ.copy()
     try:
         for i in range(0, len(text), _WTYPE_CHUNK):
             chunk = text[i : i + _WTYPE_CHUNK]
@@ -45,12 +52,16 @@ def _type_with_wtype(text: str) -> bool:
                 args.extend(["--", chunk])
             else:
                 args.append(chunk)
-            if subprocess.run(args, capture_output=True, timeout=10, check=False).returncode != 0:
+            result = subprocess.run(args, capture_output=True, timeout=10, check=False, env=env)
+            if result.returncode != 0:
+                err = (result.stderr or b"").decode(errors="replace").strip()
+                _log_injection(f"wtype failed ({result.returncode}): {err or 'unknown error'}")
                 return False
             if i + _WTYPE_CHUNK < len(text):
                 time.sleep(0.02)
         return True
-    except Exception:
+    except Exception as exc:
+        _log_injection(f"wtype error: {exc}")
         return False
 
 

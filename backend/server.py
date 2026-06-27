@@ -177,7 +177,19 @@ def backend_server() -> None:
                     new = read_settings()
                     old = _loaded_settings or {}
                     if any(old.get(k) != new.get(k) for k in ENGINE_RELOAD_KEYS):
-                        send_status("idle", "restart required for engine/model changes")
+                        if _recording_thread and _recording_thread.is_alive():
+                            send_status("idle", "restart required for engine/model changes")
+                        else:
+                            try:
+                                engine_name = resolve_engine_id(new)
+                                send_status("idle", f"reloading {engine_name} engine...")
+                                _engine, _engine_id, _engine_label = load_engine(new)
+                                _loaded_settings = dict(new)
+                                send_status("idle", "ready", engine=_engine_label)
+                                _log(f"engine reloaded: {_engine_label}")
+                            except Exception as exc:
+                                send_status("error", str(exc))
+                                _log(f"engine reload failed: {exc}")
                     else:
                         send_status("idle", "settings updated")
             except Exception as exc:

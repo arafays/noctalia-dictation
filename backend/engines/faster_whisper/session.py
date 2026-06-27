@@ -22,16 +22,6 @@ def _transcribe_audio(engine: FasterWhisperEngine, audio: np.ndarray) -> str:
     return clean_transcript(" ".join(s.text for s in segments).strip())
 
 
-def _delta_text(full_text: str, committed: str) -> str:
-    if not full_text:
-        return ""
-    if not committed:
-        return full_text
-    if full_text.startswith(committed):
-        return full_text[len(committed) :].lstrip()
-    return full_text
-
-
 def _with_space_prefix(text: str, committed: str) -> str:
     if not text:
         return ""
@@ -47,32 +37,39 @@ class FasterWhisperSession:
         self.committed_text = ""
         self.current_partial = ""
         self.session_has_speech = False
+        self.segment_has_speech = False
         self.consecutive_silence = 0
         self.silence_rms = max(0.001, float(engine.silence_rms))
         self.max_silence_chunks = max(1, int(float(engine.pause_sec) / CHUNK_SEC))
         self.partial_interval_sec = max(0.5, float(engine.partial_interval_sec))
         self.last_partial_time = 0.0
 
-    def _all_audio(self) -> np.ndarray:
+    def _segment_audio(self) -> np.ndarray:
         if not self.chunks:
             return np.array([], dtype=np.float32)
         return np.concatenate(self.chunks, axis=0).flatten()
 
-    def _decode_all(self) -> str:
-        audio = self._all_audio()
+    def _decode_segment(self) -> str:
+        audio = self._segment_audio()
         if len(audio) == 0:
             return ""
         return _transcribe_audio(self.engine, audio)
 
-    def _commit_delta(self, full_text: str) -> None:
-        delta = _delta_text(full_text, self.committed_text)
-        if not delta:
+    def _commit_segment(self, segment_text: str) -> None:
+        text = clean_transcript(segment_text)
+        if not text:
             return
-        to_type = _with_space_prefix(delta, self.committed_text)
+        to_type = _with_space_prefix(text, self.committed_text)
         if to_type:
             if self.engine.auto_type:
                 type_committed(to_type)
             self.committed_text += to_type
+
+    def _reset_segment(self) -> None:
+        self.chunks = []
+        self.segment_has_speech = False
+        self.current_partial = ""
+        self.consecutive_silence = 0
 
     def accept_chunk(self, samples: np.ndarray) -> None:
         self.chunks.append(samples.copy())
@@ -81,38 +78,35 @@ class FasterWhisperSession:
 
         if is_speech:
             self.session_has_speech = True
+            self.segment_has_speech = True
             self.consecutive_silence = 0
-        elif self.session_has_speech:
+        elif self.segment_has_speech:
             self.consecutive_silence += 1
 
         now = time.monotonic()
         should_partial = (
             is_speech
-            and self.session_has_speech
+            and self.segment_has_speech
             and now - self.last_partial_time >= self.partial_interval_sec
         )
+        # Pause-based phrase boundaries (RMS silence), independent of vad_enabled.
         should_commit = (
-            self.engine.vad_enabled
-            and self.session_has_speech
+            self.segment_has_speech
             and self.consecutive_silence >= self.max_silence_chunks
         )
 
-        if should_partial or should_commit:
-            full_text = self._decode_all()
-            if should_commit:
-                self._commit_delta(full_text)
-                self.current_partial = ""
-                self.consecutive_silence = 0
-                send_live(self.committed_text, "")
-            else:
-                self.current_partial = _delta_text(full_text, self.committed_text)
-                self.last_partial_time = now
-                send_live(self.committed_text, self.current_partial)
+        if should_commit:
+            self._commit_segment(self._decode_segment())
+            self._reset_segment()
+            send_live(self.committed_text, "")
+        elif should_partial:
+            self.current_partial = self._decode_segment()
+            self.last_partial_time = now
+            send_live(self.committed_text, self.current_partial)
 
     def finish(self) -> str:
         if self.chunks:
-            full_text = self._decode_all()
-            self._commit_delta(full_text)
+            self._commit_segment(self._decode_segment())
         return self.committed_text.strip()
 
 
