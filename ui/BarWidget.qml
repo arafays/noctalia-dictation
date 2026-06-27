@@ -16,7 +16,7 @@ Item {
     property int sectionWidgetsCount: 0
 
     readonly property var mainInstance: pluginApi?.mainInstance
-    readonly property string state: mainInstance?.backendState || "stopped"
+    readonly property string dictationState: mainInstance?.backendState || "stopped"
     readonly property string message: mainInstance?.backendMessage || ""
 
     property var cfg: pluginApi?.pluginSettings || ({})
@@ -26,6 +26,7 @@ Item {
     readonly property bool autoType: cfg.autoType ?? defaults.autoType ?? true
     readonly property bool vadEnabled: cfg.vadEnabled ?? defaults.vadEnabled ?? true
     readonly property string engine: cfg.engine ?? defaults.engine ?? "auto"
+    readonly property string stopHotkeyHint: cfg.stopHotkeyHint ?? defaults.stopHotkeyHint ?? ""
     readonly property bool isFwEngine: root.engine === "faster_whisper"
 
     readonly property string screenName: screen?.name ?? ""
@@ -104,15 +105,20 @@ Item {
     }
 
     readonly property string tooltipText: {
-        switch (state) {
+        switch (dictationState) {
         case "setup":
             return pluginApi?.tr("widget.setup") || "Installing dependencies..."
         case "recording":
-            return (pluginApi?.tr("widget.recording") || "Listening")
-                + " — " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
+            var recHint = pluginApi?.tr("widget.recordingHint") || "click bar mic to stop"
+            if (root.stopHotkeyHint.length > 0)
+                recHint += " · " + root.stopHotkeyHint
+            return (pluginApi?.tr("widget.recording") || "Listening") + " — " + recHint
         case "transcribing":
+            var stopHint = pluginApi?.tr("widget.recordingHint") || "click bar mic to stop"
+            if (root.stopHotkeyHint.length > 0)
+                stopHint += " · " + root.stopHotkeyHint
             return (pluginApi?.tr("widget.transcribing") || "Transcribing...")
-                + " — " + (pluginApi?.tr("widget.recordingHint") || "click to stop")
+                + " — " + stopHint
         case "starting":
             return pluginApi?.tr("widget.starting") || "Starting backend..."
         case "error":
@@ -131,17 +137,17 @@ Item {
     property real pulse: 0
 
     SequentialAnimation on pulse {
-        running: root.state === "recording" || root.state === "starting" || root.state === "transcribing"
+        running: root.dictationState === "recording" || root.dictationState === "starting" || root.dictationState === "transcribing"
         loops: Animation.Infinite
         onRunningChanged: if (!running) root.pulse = 0
         NumberAnimation {
             from: 0; to: 1
-            duration: root.state === "recording" ? 600 : 900
+            duration: root.dictationState === "recording" ? 600 : 900
             easing.type: Easing.InOutQuad
         }
         NumberAnimation {
             from: 1; to: 0
-            duration: root.state === "recording" ? 600 : 900
+            duration: root.dictationState === "recording" ? 600 : 900
             easing.type: Easing.InOutQuad
         }
     }
@@ -153,7 +159,7 @@ Item {
         width: root.contentWidth
         height: root.contentHeight
         color: {
-            switch (root.state) {
+            switch (root.dictationState) {
             case "recording":
                 return Color.mErrorContainer
             case "transcribing":
@@ -169,16 +175,16 @@ Item {
             }
         }
         radius: Style.radiusL
-        border.color: root.state === "recording"
+        border.color: root.dictationState === "recording"
             ? Color.mError
-            : (root.state === "error" ? Color.mError : Style.capsuleBorderColor)
-        border.width: root.state === "recording" ? 2 : Style.capsuleBorderWidth
+            : (root.dictationState === "error" ? Color.mError : Style.capsuleBorderColor)
+        border.width: root.dictationState === "recording" ? 2 : Style.capsuleBorderWidth
 
         Rectangle {
             anchors.fill: parent
             radius: parent.radius
             color: {
-                switch (root.state) {
+                switch (root.dictationState) {
                 case "recording": return Color.mError
                 case "transcribing": return Color.mPrimary
                 case "starting": return Color.mPrimary
@@ -186,10 +192,10 @@ Item {
                 }
             }
             opacity: {
-                switch (root.state) {
-                case "recording": return pulse * 0.25
-                case "transcribing": return pulse * 0.12
-                case "starting": return pulse * 0.18
+                switch (root.dictationState) {
+                case "recording": return root.pulse * 0.25
+                case "transcribing": return root.pulse * 0.12
+                case "starting": return root.pulse * 0.18
                 default: return 0
                 }
             }
@@ -203,7 +209,7 @@ Item {
             NIcon {
                 id: iconItem
                 icon: {
-                    switch (root.state) {
+                    switch (root.dictationState) {
                     case "setup": return "download"
                     case "recording": return "player-record-filled"
                     case "transcribing": return "loader"
@@ -214,7 +220,7 @@ Item {
                     }
                 }
                 color: {
-                    switch (root.state) {
+                    switch (root.dictationState) {
                     case "setup": return Color.mOnPrimaryContainer
                     case "recording": return Color.mOnErrorContainer
                     case "transcribing": return Color.mOnPrimaryContainer
@@ -226,7 +232,7 @@ Item {
                 }
                 applyUiScale: false
 
-                readonly property bool spinning: root.state === "starting" || root.state === "transcribing"
+                readonly property bool spinning: root.dictationState === "starting" || root.dictationState === "transcribing"
                 property real spinAngle: 0
                 rotation: spinning ? spinAngle : 0
 
@@ -252,16 +258,16 @@ Item {
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-        onEntered: TooltipService.show(root, root.tooltipText, BarService.getTooltipDirection(screenName))
+        onEntered: TooltipService.show(root, root.tooltipText, BarService.getTooltipDirection(root.screenName))
         onExited: TooltipService.hide()
 
         onClicked: mouse => {
             if (mouse.button === Qt.RightButton) {
-                PanelService.showContextMenu(contextMenu, root, screen)
+                PanelService.showContextMenu(contextMenu, root, root.screen)
                 return
             }
-            if (mainInstance) {
-                mainInstance.toggleRecording()
+            if (root.mainInstance) {
+                root.mainInstance.toggleRecording(root.screenName)
             }
         }
     }
@@ -271,47 +277,47 @@ Item {
 
         model: [
             {
-                "label": pluginApi?.tr("context.toggle") || "Toggle Dictation",
+                "label": root.pluginApi?.tr("context.toggle") || "Toggle Dictation",
                 "action": "toggle-dictation",
                 "icon": "microphone"
             },
             {
-                "label": pluginApi?.tr("context.openPanel") || "Open history panel",
+                "label": root.pluginApi?.tr("context.openPanel") || "Open history panel",
                 "action": "open-panel",
                 "icon": "history"
             },
             {
                 "label": (root.showOverlay
-                    ? (pluginApi?.tr("context.overlayOn") || "Live overlay: on")
-                    : (pluginApi?.tr("context.overlayOff") || "Live overlay: off")),
+                    ? (root.pluginApi?.tr("context.overlayOn") || "Live overlay: on")
+                    : (root.pluginApi?.tr("context.overlayOff") || "Live overlay: off")),
                 "action": "toggle-overlay",
                 "icon": root.showOverlay ? "eye" : "eye-off"
             },
             {
                 "label": (root.autoType
-                    ? (pluginApi?.tr("context.autoTypeOn") || "Auto-type: on")
-                    : (pluginApi?.tr("context.autoTypeOff") || "Auto-type: off")),
+                    ? (root.pluginApi?.tr("context.autoTypeOn") || "Auto-type: on")
+                    : (root.pluginApi?.tr("context.autoTypeOff") || "Auto-type: off")),
                 "action": "toggle-auto-type",
                 "icon": "keyboard"
             },
             {
                 "label": (root.vadEnabled
                     ? (root.isFwEngine
-                        ? (pluginApi?.tr("context.vadOnFw") || "Silence detection: on")
-                        : (pluginApi?.tr("context.vadOnSherpa") || pluginApi?.tr("context.vadOn") || "Noise gate (VAD): on"))
+                        ? (root.pluginApi?.tr("context.vadOnFw") || "Silence detection: on")
+                        : (root.pluginApi?.tr("context.vadOnSherpa") || root.pluginApi?.tr("context.vadOn") || "Noise gate (VAD): on"))
                     : (root.isFwEngine
-                        ? (pluginApi?.tr("context.vadOffFw") || "Silence detection: off")
-                        : (pluginApi?.tr("context.vadOffSherpa") || pluginApi?.tr("context.vadOff") || "Noise gate (VAD): off"))),
+                        ? (root.pluginApi?.tr("context.vadOffFw") || "Silence detection: off")
+                        : (root.pluginApi?.tr("context.vadOffSherpa") || root.pluginApi?.tr("context.vadOff") || "Noise gate (VAD): off"))),
                 "action": "toggle-vad",
                 "icon": "filter"
             },
             {
-                "label": pluginApi?.tr("context.barSettings") || "Bar quick settings",
+                "label": root.pluginApi?.tr("context.barSettings") || "Bar quick settings",
                 "action": "bar-settings",
                 "icon": "adjustments"
             },
             {
-                "label": pluginApi?.tr("context.pluginSettings") || "Plugin settings",
+                "label": root.pluginApi?.tr("context.pluginSettings") || "Plugin settings",
                 "action": "plugin-settings",
                 "icon": "settings"
             }
@@ -322,11 +328,11 @@ Item {
             PanelService.closeContextMenu(screen)
 
             if (action === "toggle-dictation") {
-                if (mainInstance) {
-                    mainInstance.toggleRecording()
+                if (root.mainInstance) {
+                    root.mainInstance.toggleRecording(root.screenName)
                 }
             } else if (action === "open-panel") {
-                pluginApi?.openPanel(screen, root)
+                root.pluginApi?.openPanel(screen, root)
             } else if (action === "toggle-overlay") {
                 root.saveQuickSetting("showOverlay", !root.showOverlay)
             } else if (action === "toggle-auto-type") {

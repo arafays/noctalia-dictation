@@ -22,12 +22,15 @@ def import_error() -> Exception | None:
 
 def has_cuda() -> bool:
     try:
-        return subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            timeout=2,
-            check=False,
-        ).returncode == 0
+        return (
+            subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                timeout=2,
+                check=False,
+            ).returncode
+            == 0
+        )
     except Exception:
         return False
 
@@ -85,22 +88,26 @@ def diagnose_checks(settings: dict[str, Any], models_dir: Path, plugin_dir: Path
     checks: list[dict[str, Any]] = []
 
     sherpa_ok = available()
-    checks.append({
-        "id": "sherpa",
-        "ok": sherpa_ok,
-        "label": "sherpa-onnx package",
-        "detail": "installed" if sherpa_ok else str(import_error()),
-        "fix": f"cd {plugin_dir} && ./setup.sh",
-    })
+    checks.append(
+        {
+            "id": "sherpa",
+            "ok": sherpa_ok,
+            "label": "sherpa-onnx package",
+            "detail": "installed" if sherpa_ok else str(import_error()),
+            "fix": f"cd {plugin_dir} && ./setup.sh",
+        }
+    )
 
     models_reason = models_missing_reason(models_dir, profile)
-    checks.append({
-        "id": "models",
-        "ok": models_reason is None,
-        "label": f"ONNX models ({profile})",
-        "detail": "ready" if models_reason is None else models_reason,
-        "fix": f"cd {plugin_dir} && ./download_models.sh {profile}",
-    })
+    checks.append(
+        {
+            "id": "models",
+            "ok": models_reason is None,
+            "label": f"ONNX models ({profile})",
+            "detail": "ready" if models_reason is None else models_reason,
+            "fix": f"cd {plugin_dir} && ./download_models.sh {profile}",
+        }
+    )
 
     return checks
 

@@ -1,0 +1,22 @@
+[env]
+# Used by qmllint tasks and any tool that reads QML_IMPORT_PATH (-E).
+QML_IMPORT_PATH = "{{config_root}}/.qmltooling/vfs:/usr/lib/qt6/qml"
+QML2_IMPORT_PATH = "{{config_root}}/.qmltooling/vfs:/usr/lib/qt6/qml"
+_.path = ["/usr/lib/qt6/bin"]
+
+[tasks.qml-lsp]
+description = "Build local qmlls VFS for Noctalia qs.* imports (run after shell upgrades)"
+run = "python3 scripts/qmltooling.py"
+
+[tasks."ruff:check"]
+description = "Lint Python backend"
+run = ".venv/bin/ruff check ."
+
+[tasks."ruff:format"]
+description = "Format Python backend"
+run = ".venv/bin/ruff format ."
+
+[tasks."qmllint:all"]
+description = "Lint all plugin QML files"
+run = "find ui -name '*.qml' -print0 | xargs -0 /usr/lib/qt6/bin/qmllint --unqualified warning -I .qmltooling/vfs -I /usr/lib/qt6/qml"
+depends = ["qml-lsp"]

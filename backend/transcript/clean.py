@@ -3,24 +3,83 @@
 from __future__ import annotations
 
 import re
+import zlib
 
 _TAG_RE = re.compile(r"<\|[^|]+\|>")
 _BRACKETED_RE = re.compile(r"[\[\(\{]([^\]\)\}]+)[\]\)\}]")
 
-_NOISE_KEYWORDS = frozenset({
-    "mumbling", "inaudible", "unintelligible", "indistinct", "unclear",
-    "silence", "silent", "blank", "audio", "nospeech", "speech",
-    "background", "noise", "static", "wind", "howling", "blowing", "rustling",
-    "music", "musical", "applause", "laughter", "laughing", "coughing", "cough",
-    "sneezing", "sneeze", "breathing", "breath", "sigh", "sighing",
-    "whispering", "whisper", "humming", "screaming", "shouting",
-    "door", "slam", "slamming", "knock", "knocking", "phone", "ringing",
-    "beep", "beeping", "click", "clicking", "tap", "tapping",
-    "subtitle", "subtitles", "subscribe", "watching",
-    "crowd", "talking", "chatter", "murmur", "murmuring",
-    "water", "running", "rain", "thunder", "traffic",
-    "sounds", "sound", "effects", "effect", "ambient",
-})
+_NOISE_KEYWORDS = frozenset(
+    {
+        "mumbling",
+        "inaudible",
+        "unintelligible",
+        "indistinct",
+        "unclear",
+        "silence",
+        "silent",
+        "blank",
+        "audio",
+        "nospeech",
+        "speech",
+        "background",
+        "noise",
+        "static",
+        "wind",
+        "howling",
+        "blowing",
+        "rustling",
+        "music",
+        "musical",
+        "applause",
+        "laughter",
+        "laughing",
+        "coughing",
+        "cough",
+        "sneezing",
+        "sneeze",
+        "breathing",
+        "breath",
+        "sigh",
+        "sighing",
+        "whispering",
+        "whisper",
+        "humming",
+        "screaming",
+        "shouting",
+        "door",
+        "slam",
+        "slamming",
+        "knock",
+        "knocking",
+        "phone",
+        "ringing",
+        "beep",
+        "beeping",
+        "click",
+        "clicking",
+        "tap",
+        "tapping",
+        "subtitle",
+        "subtitles",
+        "subscribe",
+        "watching",
+        "crowd",
+        "talking",
+        "chatter",
+        "murmur",
+        "murmuring",
+        "water",
+        "running",
+        "rain",
+        "thunder",
+        "traffic",
+        "sounds",
+        "sound",
+        "effects",
+        "effect",
+        "ambient",
+    }
+)
 
 _NOISE_ONLY_RE = re.compile(
     r"(?i)^(?:"
@@ -83,6 +142,115 @@ def _strip_filler_words(text: str) -> str:
     return text
 
 
+def compression_ratio(text: str) -> float:
+    """Whisper-style ratio; high values indicate repetitive hallucination loops."""
+    data = text.encode("utf-8")
+    if not data:
+        return 0.0
+    compressed = zlib.compress(data)
+    return len(data) / len(compressed)
+
+
+def _normalize_token(word: str) -> str:
+    return re.sub(r"[^\w']+", "", word.lower())
+
+
+def _collapse_word_loops(words: list[str], min_repeats: int = 3) -> list[str]:
+    if len(words) < min_repeats * 2:
+        return words
+    max_phrase = min(12, len(words) // min_repeats)
+    for size in range(max_phrase, 1, -1):
+        out: list[str] = []
+        i = 0
+        changed = False
+        while i < len(words):
+            if i + size * min_repeats <= len(words):
+                phrase = [_normalize_token(w) for w in words[i : i + size]]
+                repeats = 1
+                j = i + size
+                while j + size <= len(words):
+                    next_phrase = [_normalize_token(w) for w in words[j : j + size]]
+                    if next_phrase != phrase:
+                        break
+                    repeats += 1
+                    j += size
+                if repeats >= min_repeats:
+                    out.extend(words[i : i + size])
+                    i = j
+                    changed = True
+                    continue
+            out.append(words[i])
+            i += 1
+        if changed:
+            return _collapse_word_loops(out, min_repeats)
+    return words
+
+
+def _normalize_clause(clause: str) -> str:
+    return re.sub(r"[^\w']+", " ", clause.lower()).strip()
+
+
+def _collapse_clause_loops(text: str, min_repeats: int = 1) -> str:
+    parts = [part.strip() for part in re.split(r",\s*", text) if part.strip()]
+    if len(parts) < min_repeats + 1:
+        return text
+    out: list[str] = []
+    i = 0
+    while i < len(parts):
+        clause = parts[i]
+        norm = _normalize_clause(clause)
+        repeats = 1
+        j = i + 1
+        while j < len(parts) and _normalize_clause(parts[j]) == norm:
+            repeats += 1
+            j += 1
+        if repeats >= min_repeats + 1:
+            out.append(clause)
+            i = j
+        else:
+            out.append(clause)
+            i += 1
+    return ", ".join(out)
+
+
+def _collapse_repetitions(text: str) -> str:
+    """Collapse Whisper stutter loops like 'and it's a, and it's a, ...'."""
+    collapsed = " ".join(_collapse_word_loops(text.split(), min_repeats=2))
+    collapsed = _collapse_clause_loops(collapsed)
+    collapsed = " ".join(_collapse_word_loops(collapsed.split()))
+    clause_re = re.compile(
+        r"(\b[\w']+(?:[\s,]+[\w']+){0,7}[\.,]?\s*)(?:\1){2,}",
+        re.IGNORECASE,
+    )
+    for _ in range(4):
+        next_text = clause_re.sub(r"\1", collapsed)
+        if next_text == collapsed:
+            break
+        collapsed = next_text
+    return re.sub(r"\s+", " ", collapsed).strip()
+
+
+def append_transcript(committed: str, new: str) -> str:
+    """Append cleaned ASR text, dropping overlap with the committed tail."""
+    new = clean_transcript(new)
+    if not new:
+        return committed
+    if not committed:
+        return new
+    if new in committed:
+        return committed
+    max_overlap = min(len(committed), len(new))
+    for overlap in range(max_overlap, 0, -1):
+        if committed[-overlap:] == new[:overlap]:
+            suffix = new[overlap:].lstrip()
+            if not suffix:
+                return committed
+            sep = "" if committed.endswith((" ", "\n")) or suffix[0] in ",.!?;:" else " "
+            return committed + sep + suffix
+    sep = "" if committed.endswith((" ", "\n")) else " "
+    return committed + sep + new
+
+
 def clean_transcript(text: str) -> str:
     if not text:
         return ""
@@ -91,6 +259,7 @@ def clean_transcript(text: str) -> str:
     text = re.sub(r"[♪♫]+", " ", text)
     text = _strip_filler_words(text)
     text = re.sub(r"\s+", " ", text).strip()
+    text = _collapse_repetitions(text)
     if _phrase_is_noise_only(text):
         return ""
     return text

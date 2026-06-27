@@ -1,5 +1,5 @@
 """Transcript post-processing."""
 
-from backend.transcript.clean import clean_transcript
+from backend.transcript.clean import append_transcript, clean_transcript, compression_ratio
 
-__all__ = ["clean_transcript"]
+__all__ = ["append_transcript", "clean_transcript", "compression_ratio"]

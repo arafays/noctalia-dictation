@@ -77,6 +77,29 @@ The second-pass Whisper models are **sherpa-onnx ONNX exports**, not the `faster
 | **System** | Yes | Python 3.10+, `wtype`, `wl-copy`, PortAudio, `curl`, `tar` |
 | **Python venv** | Yes (`./setup.sh`) | `sherpa-onnx`, `faster-whisper`, `sounddevice`, `numpy` |
 | **Models** | Yes (`./download_models.sh`) | ONNX files in `models/` (sherpa only; fw uses Hugging Face cache) |
+| **Dev tools** | Optional (`pip install -r requirements-dev.txt`) | `ruff` (lint + format); not installed by `./setup.sh` |
+
+## Lint & format
+
+Agents and contributors should run these before finishing Python or QML edits.
+
+### Python — ruff
+
+- **Config:** `pyproject.toml` (line length 120; rules `E`, `F`, `I`, `UP`, `B`, `SIM`)
+- **Install:** `.venv/bin/pip install -r requirements-dev.txt` (once; `./setup.sh` does not pull dev deps)
+- **Lint:** `.venv/bin/ruff check .` — auto-fix safe issues with `--fix`; a few rules (e.g. `SIM105`) need manual edits or `--unsafe-fixes`
+- **Format:** `.venv/bin/ruff format .`
+- **Shortcuts:** `mise run ruff:check` / `mise run ruff:format`, or VS Code tasks **ruff: check** / **ruff: format**
+- **IDE:** Ruff extension (`charliermarsh.ruff`); Pyright settings in `pyproject.toml`
+
+### QML — qmllint + qmlls
+
+- **VFS (once per clone / shell upgrade):** `python3 scripts/qmltooling.py` — mirrors Noctalia `qs.*` imports into `.qmltooling/vfs/` and writes `.qmlls.ini` (both gitignored)
+- **Lint:** `find ui -name '*.qml' -print0 | xargs -0 /usr/lib/qt6/bin/qmllint --unqualified warning -I .qmltooling/vfs -I /usr/lib/qt6/qml`
+- **Use the Qt 6 binary explicitly.** On Arch/CachyOS, `/usr/bin/qmllint` is a legacy stub (`qmllint 1.0`) that exits **255 with no output** — not a project bug. The real tool is `/usr/lib/qt6/bin/qmllint` (Qt 6.10+; supports `--unqualified warning`, `--json -`, etc.). Tasks and `.mise.toml` call the full path; `.mise.toml` also prepends `/usr/lib/qt6/bin` to `PATH`.
+- **Import paths:** qmllint needs type info from QML modules on the import path ([Qt docs](https://doc.qt.io/qt-6/qmllint-warnings-and-errors-import.html)). The VFS supplies `qs.*` QML sources; `Quickshell` comes from `/usr/lib/qt6/qml`. Some Noctalia types may still warn as `[missing-property]` without `.qmltypes` stubs — the plugin runs fine at runtime.
+- **Shortcuts:** `mise run qmllint:all` (depends on `qml-lsp`), or VS Code task **qmllint: all QML**
+- **IDE:** Qt QML extension (`TheQtCompany.qt-qml`); restart QML language server after rebuilding the VFS
 
 ## IPC
 
@@ -116,6 +139,8 @@ chezmoi apply --source-path "private_dot_config/noctalia/plugins/symlink_dictati
 - **Never** `rsync`, `cp -r`, or otherwise copy this repo into `~/.config/noctalia/plugins/dictation/` when a dev symlink exists
 - Edit the repo directly; reload the plugin in Noctalia to test
 - Do not add the plugin sources back into chezmoi — symlink only
+- After Python changes: run `.venv/bin/ruff check .` and `.venv/bin/ruff format .` (fix reported issues directly)
+- After QML changes: run qmllint (see **Lint & format**); rebuild the VFS if `qs.*` imports fail in the IDE
 
 ## Noctalia plugin install (v4)
 

@@ -49,7 +49,6 @@
       "showOverlay": true,
       "showPartialTranscript": true,
       "autoType": true,
-      "overlayPosition": "bottom",
       "stopHotkeyHint": "",
       "overlayCustomPositions": {},
       "vadEnabled": true,

@@ -65,7 +65,4 @@ class FasterWhisperEngine:
 
     def describe(self) -> str:
         lang = self.language if self.language not in ("auto", "") else "auto-detect"
-        return (
-            f"faster-whisper {self.model_size} ({self.device}, {self.compute_type}, "
-            f"{lang}, beam={self.beam_size})"
-        )
+        return f"faster-whisper {self.model_size} ({self.device}, {self.compute_type}, {lang}, beam={self.beam_size})"

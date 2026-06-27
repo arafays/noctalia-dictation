@@ -28,12 +28,15 @@ def import_error() -> Exception | None:
 
 def has_cuda() -> bool:
     try:
-        return subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            timeout=2,
-            check=False,
-        ).returncode == 0
+        return (
+            subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                timeout=2,
+                check=False,
+            ).returncode
+            == 0
+        )
     except Exception:
         return False
 
@@ -109,25 +112,29 @@ def diagnose_checks(settings: dict[str, Any], models_dir: Path, plugin_dir: Path
     checks: list[dict[str, Any]] = []
 
     fw_ok = available()
-    checks.append({
-        "id": "faster_whisper",
-        "ok": fw_ok,
-        "label": "faster-whisper package",
-        "detail": "installed" if fw_ok else str(import_error()),
-        "fix": f"cd {plugin_dir} && ./setup.sh",
-    })
+    checks.append(
+        {
+            "id": "faster_whisper",
+            "ok": fw_ok,
+            "label": "faster-whisper package",
+            "detail": "installed" if fw_ok else str(import_error()),
+            "fix": f"cd {plugin_dir} && ./setup.sh",
+        }
+    )
 
     if fw_ok:
         model = resolve_model(settings)
         device = resolve_device(settings)
         compute = resolve_compute_type(settings, device)
-        checks.append({
-            "id": "fw_model",
-            "ok": True,
-            "label": f"Whisper model ({model})",
-            "detail": f"downloads on first use ({device}, {compute})",
-            "fix": "",
-        })
+        checks.append(
+            {
+                "id": "fw_model",
+                "ok": True,
+                "label": f"Whisper model ({model})",
+                "detail": f"downloads on first use ({device}, {compute})",
+                "fix": "",
+            }
+        )
 
     return checks
 

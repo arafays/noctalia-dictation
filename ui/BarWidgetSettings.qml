@@ -45,56 +45,38 @@ ColumnLayout {
     _defaults?.vadThreshold ??
     0.4
 
-  property string editOverlayPosition:
-    pluginApi?.pluginSettings?.overlayPosition ||
-    _defaults?.overlayPosition ||
-    "bottom"
-
   NLabel {
-    label: pluginApi?.tr("settings.bar.title") || "Bar quick settings"
-    description: pluginApi?.tr("settings.bar.desc")
+    label: root.pluginApi?.tr("settings.bar.title") || "Bar quick settings"
+    description: root.pluginApi?.tr("settings.bar.desc")
         || "Operational toggles for the mic widget. Speech engine and models are in Plugin settings."
     Layout.topMargin: Style.marginS
   }
 
   NToggle {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.showOverlay") || "Show live overlay"
-    description: pluginApi?.tr("settings.showOverlayDesc") || "Floating transcript card while dictating"
+    label: root.pluginApi?.tr("settings.showOverlay") || "Show live overlay"
+    description: root.pluginApi?.tr("settings.showOverlayDesc") || "Compact bubble while dictating (click-through; position in settings)"
     checked: root.editShowOverlay
     onToggled: checked => root.editShowOverlay = checked
   }
 
   NToggle {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.showPartial") || "Show partial transcript"
+    label: root.pluginApi?.tr("settings.showPartial") || "Show partial transcript"
     description: root.isFwEngine
-        ? (pluginApi?.tr("settings.showPartialFwDesc")
+        ? (root.pluginApi?.tr("settings.showPartialFwDesc")
             || "Italic preview while faster-whisper decodes the current phrase")
-        : (pluginApi?.tr("settings.showPartialSherpaDesc")
-            || pluginApi?.tr("settings.showPartialDesc")
+        : (root.pluginApi?.tr("settings.showPartialSherpaDesc")
+            || root.pluginApi?.tr("settings.showPartialDesc")
             || "Italic preview from sherpa streaming pass")
     checked: root.editShowPartial
     onToggled: checked => root.editShowPartial = checked
   }
 
-  NComboBox {
-    Layout.fillWidth: true
-    label: pluginApi?.tr("settings.overlayPosition") || "Overlay position"
-    description: pluginApi?.tr("settings.overlayPositionDesc") || "Where the transcript card appears on screen"
-    model: [
-      { "key": "bottom", "name": pluginApi?.tr("settings.overlayBottom") || "Bottom" },
-      { "key": "top", "name": pluginApi?.tr("settings.overlayTop") || "Top" }
-    ]
-    currentKey: root.editOverlayPosition
-    onSelected: key => root.editOverlayPosition = key
-    defaultValue: _defaults?.overlayPosition || "bottom"
-  }
-
   NToggle {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.autoType") || "Auto-type on commit"
-    description: pluginApi?.tr("settings.autoTypeDesc") || "Type each phrase into the focused window via wtype (off = clipboard only on stop)"
+    label: root.pluginApi?.tr("settings.autoType") || "Auto-type on commit"
+    description: root.pluginApi?.tr("settings.autoTypeDesc") || "Type each phrase into the focused window via wtype (off = clipboard only on stop)"
     checked: root.editAutoType
     onToggled: checked => root.editAutoType = checked
   }
@@ -102,15 +84,15 @@ ColumnLayout {
   NToggle {
     Layout.fillWidth: true
     label: root.isFwEngine
-        ? (pluginApi?.tr("settings.vadEnabledFw") || "Silence detection")
-        : (pluginApi?.tr("settings.vadEnabledSherpa")
-            || pluginApi?.tr("settings.vadEnabled")
+        ? (root.pluginApi?.tr("settings.vadEnabledFw") || "Silence detection")
+        : (root.pluginApi?.tr("settings.vadEnabledSherpa")
+            || root.pluginApi?.tr("settings.vadEnabled")
             || "Noise gate (VAD)")
     description: root.isFwEngine
-        ? (pluginApi?.tr("settings.vadEnabledFwDesc")
+        ? (root.pluginApi?.tr("settings.vadEnabledFwDesc")
             || "Skip decode during silence; re-decode on pauses (RMS gate)")
-        : (pluginApi?.tr("settings.vadEnabledSherpaDesc")
-            || pluginApi?.tr("settings.vadEnabledDesc")
+        : (root.pluginApi?.tr("settings.vadEnabledSherpaDesc")
+            || root.pluginApi?.tr("settings.vadEnabledDesc")
             || "Silero VAD skips decode on non-speech audio")
     checked: root.editVadEnabled
     onToggled: checked => root.editVadEnabled = checked
@@ -118,8 +100,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.editVadEnabled && !root.isFwEngine
-    label: pluginApi?.tr("settings.vadThreshold") || "VAD sensitivity"
-    description: (pluginApi?.tr("settings.vadThresholdDesc") || "Higher = stricter (less background noise). Restart backend after change.")
+    label: root.pluginApi?.tr("settings.vadThreshold") || "VAD sensitivity"
+    description: (root.pluginApi?.tr("settings.vadThresholdDesc") || "Higher = stricter (less background noise). Restart backend after change.")
         + " (" + root.editVadThreshold.toFixed(2) + ")"
   }
 
@@ -142,7 +124,6 @@ ColumnLayout {
     pluginApi.pluginSettings.showOverlay = root.editShowOverlay
     pluginApi.pluginSettings.showPartialTranscript = root.editShowPartial
     pluginApi.pluginSettings.autoType = root.editAutoType
-    pluginApi.pluginSettings.overlayPosition = root.editOverlayPosition
     pluginApi.pluginSettings.vadEnabled = root.editVadEnabled
     pluginApi.pluginSettings.vadThreshold = Math.max(0.1, Math.min(0.9, parseFloat(root.editVadThreshold) || 0.4))
     pluginApi.saveSettings()

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -42,7 +43,7 @@ Item {
         }
 
         NText {
-          text: pluginApi?.tr("panel.title") || "Dictation"
+          text: root.pluginApi?.tr("panel.title") || "Dictation"
           pointSize: Style.fontSizeL
           font.weight: Font.Bold
           color: Color.mOnSurface
@@ -51,12 +52,12 @@ Item {
 
         NIconButton {
           icon: "trash"
-          tooltipText: pluginApi?.tr("panel.clear") || "Clear history"
+          tooltipText: root.pluginApi?.tr("panel.clear") || "Clear history"
           Layout.topMargin: Style.marginS
           Layout.bottomMargin: Style.marginS
           onClicked: {
-            if (pluginApi?.mainInstance) {
-              pluginApi.mainInstance.clearHistory()
+            if (root.pluginApi?.mainInstance) {
+              root.pluginApi.mainInstance.clearHistory()
             }
           }
         }
@@ -66,24 +67,23 @@ Item {
           Layout.topMargin: Style.marginS
           Layout.bottomMargin: Style.marginS
           onClicked: {
-            pluginApi?.closePanel(pluginApi?.panelOpenScreen)
+            root.pluginApi?.closePanel(root.pluginApi?.panelOpenScreen)
           }
         }
       }
 
       NText {
-        text: pluginApi?.tr("panel.history") || "Recent transcriptions"
+        text: root.pluginApi?.tr("panel.history") || "Recent transcriptions"
         color: Color.mOnSurfaceVariant
         pointSize: Style.fontSizeS
       }
 
       Rectangle {
         Layout.fillWidth: true
-        visible: pluginApi?.mainInstance?.backendState === "recording"
+        visible: root.pluginApi?.mainInstance?.backendState === "recording"
         color: Color.mErrorContainer
         radius: Style.radiusM
-        implicitHeight: liveSessionCol.implicitHeight + Style.marginM * 2
-        height: implicitHeight
+        Layout.preferredHeight: liveSessionCol.implicitHeight + Style.marginM * 2
 
         ColumnLayout {
           id: liveSessionCol
@@ -94,7 +94,7 @@ Item {
           spacing: Style.marginXS
 
           NText {
-            text: pluginApi?.tr("panel.liveSession") || "Live session"
+            text: root.pluginApi?.tr("panel.liveSession") || "Live session"
             color: Color.mOnErrorContainer
             font.weight: Font.Medium
           }
@@ -106,10 +106,10 @@ Item {
             NText {
               Layout.fillWidth: true
               visible: {
-                var mi = pluginApi?.mainInstance
+                var mi = root.pluginApi?.mainInstance
                 return (mi?.liveTranscript || "").length > 0
               }
-              text: pluginApi?.mainInstance?.liveTranscript || ""
+              text: root.pluginApi?.mainInstance?.liveTranscript || ""
               color: Color.mOnErrorContainer
               pointSize: Style.fontSizeM
               wrapMode: Text.WordWrap
@@ -120,10 +120,10 @@ Item {
             NText {
               Layout.fillWidth: true
               visible: {
-                var mi = pluginApi?.mainInstance
+                var mi = root.pluginApi?.mainInstance
                 return (mi?.partialTranscript || "").length > 0
               }
-              text: pluginApi?.mainInstance?.partialTranscript || ""
+              text: root.pluginApi?.mainInstance?.partialTranscript || ""
               color: Color.mOnErrorContainer
               pointSize: Style.fontSizeM
               wrapMode: Text.WordWrap
@@ -136,12 +136,12 @@ Item {
             NText {
               Layout.fillWidth: true
               visible: {
-                var mi = pluginApi?.mainInstance
+                var mi = root.pluginApi?.mainInstance
                 var committed = mi?.liveTranscript || ""
                 var partial = mi?.partialTranscript || ""
                 return committed.length === 0 && partial.length === 0
               }
-              text: pluginApi?.tr("panel.listening") || "Listening..."
+              text: root.pluginApi?.tr("panel.listening") || "Listening..."
               color: Color.mOnErrorContainer
               pointSize: Style.fontSizeM
               font.italic: true
@@ -166,11 +166,12 @@ Item {
             anchors.fill: parent
             anchors.margins: Style.marginM
 
-            model: pluginApi?.mainInstance?.history || []
+            model: root.pluginApi?.mainInstance?.history || []
             spacing: Style.marginS
 
             delegate: Rectangle {
               id: historyDelegate
+              required property var modelData
               width: historyList.width - Style.marginM * 2
               height: contentCol.implicitHeight + Style.marginM * 2
               x: Style.marginM
@@ -210,7 +211,7 @@ Item {
 
                   NText {
                     id: textItem
-                    text: (typeof modelData === "object" ? modelData.text : modelData) || ""
+                    text: (typeof historyDelegate.modelData === "object" ? historyDelegate.modelData.text : historyDelegate.modelData) || ""
                     color: Color.mOnSurface
                     pointSize: Style.fontSizeM
                     wrapMode: Text.WordWrap
@@ -218,10 +219,10 @@ Item {
                   }
 
                   NText {
-                    visible: typeof modelData === "object" && modelData.timestamp
+                    visible: typeof historyDelegate.modelData === "object" && historyDelegate.modelData.timestamp
                     text: {
-                      if (typeof modelData === "object" && modelData.timestamp) {
-                        return Qt.formatDateTime(new Date(modelData.timestamp), "hh:mm")
+                      if (typeof historyDelegate.modelData === "object" && historyDelegate.modelData.timestamp) {
+                        return Qt.formatDateTime(new Date(historyDelegate.modelData.timestamp), "hh:mm")
                       }
                       return ""
                     }
@@ -238,18 +239,18 @@ Item {
                   NIconButton {
                     icon: "copy"
                     baseSize: Style.iconSizeS
-                    tooltipText: pluginApi?.tr("panel.copy") || "Copy to clipboard"
+                    tooltipText: root.pluginApi?.tr("panel.copy") || "Copy to clipboard"
                     onClicked: {
-                      var txt = (typeof modelData === "object" ? modelData.text : modelData) || ""
+                      var txt = (typeof historyDelegate.modelData === "object" ? historyDelegate.modelData.text : historyDelegate.modelData) || ""
                       Quickshell.execDetached(["wl-copy", txt])
-                      ToastService.showNotice(pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
+                      ToastService.showNotice(root.pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
                     }
                   }
 
                   NIconButton {
                     icon: "keyboard"
                     baseSize: Style.iconSizeS
-                    tooltipText: pluginApi?.tr("panel.retype") || "Type again"
+                    tooltipText: root.pluginApi?.tr("panel.retype") || "Type again"
                     property string pendingText: ""
                     Timer {
                       id: pasteDelayTimer
@@ -257,7 +258,7 @@ Item {
                       onTriggered: Quickshell.execDetached(["wtype", "-M", "ctrl", "v", "-m", "ctrl"])
                     }
                     onClicked: {
-                      var txt = (typeof modelData === "object" ? modelData.text : modelData) || ""
+                      var txt = (typeof historyDelegate.modelData === "object" ? historyDelegate.modelData.text : historyDelegate.modelData) || ""
                       Quickshell.execDetached(["wl-copy", txt])
                       pasteDelayTimer.restart()
                     }
@@ -270,7 +271,7 @@ Item {
 
         // Empty state
         Item {
-          visible: (pluginApi?.mainInstance?.history || []).length === 0
+          visible: (root.pluginApi?.mainInstance?.history || []).length === 0
           anchors.centerIn: parent
           width: emptyColumn.implicitWidth
           height: emptyColumn.implicitHeight
@@ -291,14 +292,14 @@ Item {
             }
 
             NText {
-              text: pluginApi?.tr("panel.empty") || "No transcriptions yet"
+              text: root.pluginApi?.tr("panel.empty") || "No transcriptions yet"
               color: Color.mOnSurfaceVariant
               pointSize: Style.fontSizeM
               Layout.alignment: Qt.AlignHCenter
             }
 
             NText {
-              text: pluginApi?.tr("panel.emptyHint") || "Click the mic icon in the bar to start"
+              text: root.pluginApi?.tr("panel.emptyHint") || "Click the mic icon in the bar to start"
               color: Color.mOnSurfaceVariant
               pointSize: Style.fontSizeS
               opacity: 0.6

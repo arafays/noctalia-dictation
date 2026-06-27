@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -18,8 +19,12 @@ def models_dir() -> Path:
 
 
 def runtime_dir() -> Path:
-    return Path(os.environ.get("XDG_RUNTIME_DIR", f"/tmp/user-{os.getuid()}"))
+    d = Path(os.environ.get("XDG_RUNTIME_DIR", f"/tmp/user-{os.getuid()}"))
+    with contextlib.suppress(OSError):
+        d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 SIGNAL_FILE = runtime_dir() / "noctalia-dictation-signal"
 PID_FILE = runtime_dir() / "noctalia-dictation-pid"
+STATUS_FILE = runtime_dir() / "noctalia-dictation-status.json"

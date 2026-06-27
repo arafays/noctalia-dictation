@@ -40,10 +40,7 @@ def load_engine(settings: dict[str, Any]) -> tuple[Any, str, str]:
 
     if not mod.available():
         err = mod.import_error()
-        raise RuntimeError(
-            f"{mod.ENGINE_ID} dependencies not installed ({err}). "
-            f"Fix: cd {pd} && ./setup.sh"
-        )
+        raise RuntimeError(f"{mod.ENGINE_ID} dependencies not installed ({err}). Fix: cd {pd} && ./setup.sh")
 
     engine = mod.create_engine(settings, models_dir())
     return engine, mod.ENGINE_ID, engine.describe()

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
@@ -115,10 +116,6 @@ ColumnLayout {
     pluginApi?.pluginSettings?.vadThreshold ??
     _defaults?.vadThreshold ??
     0.4
-  property string editOverlayPosition:
-    pluginApi?.pluginSettings?.overlayPosition ||
-    _defaults?.overlayPosition ||
-    "bottom"
   property string editStopHotkeyHint:
     pluginApi?.pluginSettings?.stopHotkeyHint ||
     _defaults?.stopHotkeyHint ||
@@ -226,9 +223,56 @@ ColumnLayout {
     if (ps.computeType && !ps.fwComputeType) ps.fwComputeType = ps.computeType
   }
 
+  function overlayPreviewActive() {
+    var mi = pluginApi ? pluginApi.mainInstance : null
+    return mi ? mi.overlayPositionPreview : false
+  }
+
+  function overlayPreviewScreenName() {
+    var mi = pluginApi ? pluginApi.mainInstance : null
+    return mi ? (mi.overlayScreenName || "") : ""
+  }
+
+  function overlayPreviewMultiMonitor() {
+    var mi = pluginApi ? pluginApi.mainInstance : null
+    return mi ? mi.overlayScreenCount > 1 : false
+  }
+
+  function sessionCurrentlyActive() {
+    var mi = pluginApi ? pluginApi.mainInstance : null
+    return mi ? mi.sessionActive() : false
+  }
+
+  function setOverlayPreview(enabled) {
+    var mi = pluginApi ? pluginApi.mainInstance : null
+    if (!mi)
+      return
+    if (enabled && pluginApi?.withCurrentScreen) {
+      pluginApi.withCurrentScreen(screen => {
+        mi.setOverlayPositionPreview(true, screen?.name || "")
+      })
+    } else if (enabled) {
+      mi.setOverlayPositionPreview(true, "")
+    } else {
+      mi.setOverlayPositionPreview(false)
+    }
+  }
+
+  function cycleOverlayPreviewScreen() {
+    var mi = pluginApi ? pluginApi.mainInstance : null
+    if (mi)
+      mi.cycleOverlayPreviewScreen()
+  }
+
   Component.onCompleted: {
     migrateLegacySettings()
     Qt.callLater(runVerifyInstallation)
+    if (root.editShowOverlay)
+      Qt.callLater(function() { root.setOverlayPreview(true) })
+  }
+
+  Component.onDestruction: {
+    root.setOverlayPreview(false)
   }
 
   RowLayout {
@@ -242,7 +286,7 @@ ColumnLayout {
     }
 
     NText {
-      text: pluginApi?.tr("settings.title") || "Dictation Settings"
+      text: root.pluginApi?.tr("settings.title") || "Dictation Settings"
       pointSize: Style.fontSizeL
       font.weight: Font.Medium
       color: Color.mOnSurface
@@ -256,11 +300,11 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.engine") || "Speech engine"
+    label: root.pluginApi?.tr("settings.engine") || "Speech engine"
     description: root.isFwEngine
-        ? (pluginApi?.tr("settings.engineFwDesc")
+        ? (root.pluginApi?.tr("settings.engineFwDesc")
             || "faster-whisper (CTranslate2): better for accented English. Re-decodes on pauses; first run downloads the model.")
-        : (pluginApi?.tr("settings.engineDesc")
+        : (root.pluginApi?.tr("settings.engineDesc")
             || "sherpa-onnx two-pass streaming with Silero VAD noise gating (Zipformer live + Whisper/SenseVoice finals).")
     Layout.topMargin: Style.marginS
   }
@@ -270,13 +314,13 @@ ColumnLayout {
     model: root._engineModel
     currentKey: root.editEngine
     onSelected: key => root.editEngine = key
-    defaultValue: _defaults?.engine || "auto"
+    defaultValue: root._defaults?.engine || "auto"
   }
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaProfile") || "sherpa model profile"
-    description: pluginApi?.tr("settings.sherpaProfileDesc") || "English uses Zipformer+Whisper. Multilingual adds SenseVoice for better non-English accuracy."
+    label: root.pluginApi?.tr("settings.sherpaProfile") || "sherpa model profile"
+    description: root.pluginApi?.tr("settings.sherpaProfileDesc") || "English uses Zipformer+Whisper. Multilingual adds SenseVoice for better non-English accuracy."
     Layout.topMargin: Style.marginS
   }
 
@@ -286,13 +330,13 @@ ColumnLayout {
     model: root._sherpaProfileModel
     currentKey: root.editSherpaProfile
     onSelected: key => root.editSherpaProfile = key
-    defaultValue: _defaults?.sherpaProfile || "auto"
+    defaultValue: root._defaults?.sherpaProfile || "auto"
   }
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaProvider") || "sherpa compute provider"
-    description: pluginApi?.tr("settings.sherpaProviderDesc") || "ONNX Runtime provider for sherpa-onnx"
+    label: root.pluginApi?.tr("settings.sherpaProvider") || "sherpa compute provider"
+    description: root.pluginApi?.tr("settings.sherpaProviderDesc") || "ONNX Runtime provider for sherpa-onnx"
     Layout.topMargin: Style.marginS
   }
 
@@ -302,13 +346,13 @@ ColumnLayout {
     model: root._sherpaProviderModel
     currentKey: root.editSherpaProvider
     onSelected: key => root.editSherpaProvider = key
-    defaultValue: _defaults?.sherpaProvider || "auto"
+    defaultValue: root._defaults?.sherpaProvider || "auto"
   }
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.downloadModels") || "Model download"
-    description: pluginApi?.tr("settings.downloadModelsDesc") || "Run download_models.sh english (or multilingual) once after install. Includes Silero VAD (~200KB)."
+    label: root.pluginApi?.tr("settings.downloadModels") || "Model download"
+    description: root.pluginApi?.tr("settings.downloadModelsDesc") || "Run download_models.sh english (or multilingual) once after install. Includes Silero VAD (~200KB)."
     Layout.topMargin: Style.marginS
   }
 
@@ -320,15 +364,15 @@ ColumnLayout {
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaAdvanced") || "sherpa advanced tuning"
-    description: pluginApi?.tr("settings.sherpaAdvancedDesc") || "VAD gating and phrase-end detection. Restart backend after changes."
+    label: root.pluginApi?.tr("settings.sherpaAdvanced") || "sherpa advanced tuning"
+    description: root.pluginApi?.tr("settings.sherpaAdvancedDesc") || "VAD gating and phrase-end detection. Restart backend after changes."
   }
 
   NSpinBox {
     visible: root.isSherpaEngine
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.sherpaNumThreads") || "CPU threads"
-    description: pluginApi?.tr("settings.sherpaNumThreadsDesc") || "ONNX Runtime threads (1–8). More can help on multi-core CPUs."
+    label: root.pluginApi?.tr("settings.sherpaNumThreads") || "CPU threads"
+    description: root.pluginApi?.tr("settings.sherpaNumThreadsDesc") || "ONNX Runtime threads (1–8). More can help on multi-core CPUs."
     from: 1
     to: 8
     value: root.editSherpaNumThreads
@@ -337,8 +381,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaMinSpeechSec") || "Min speech duration"
-    description: (pluginApi?.tr("settings.sherpaMinSpeechSecDesc") || "VAD: minimum voiced segment length.")
+    label: root.pluginApi?.tr("settings.sherpaMinSpeechSec") || "Min speech duration"
+    description: (root.pluginApi?.tr("settings.sherpaMinSpeechSecDesc") || "VAD: minimum voiced segment length.")
         + " (" + root.editSherpaMinSpeechSec.toFixed(2) + " s)"
   }
 
@@ -354,8 +398,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaMinSilenceSec") || "Min silence duration"
-    description: (pluginApi?.tr("settings.sherpaMinSilenceSecDesc") || "VAD: silence needed to close a speech segment.")
+    label: root.pluginApi?.tr("settings.sherpaMinSilenceSec") || "Min silence duration"
+    description: (root.pluginApi?.tr("settings.sherpaMinSilenceSecDesc") || "VAD: silence needed to close a speech segment.")
         + " (" + root.editSherpaMinSilenceSec.toFixed(2) + " s)"
   }
 
@@ -371,8 +415,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaHangoverSec") || "VAD hangover"
-    description: (pluginApi?.tr("settings.sherpaHangoverSecDesc") || "Keep gate open briefly after speech stops (preserves word endings).")
+    label: root.pluginApi?.tr("settings.sherpaHangoverSec") || "VAD hangover"
+    description: (root.pluginApi?.tr("settings.sherpaHangoverSecDesc") || "Keep gate open briefly after speech stops (preserves word endings).")
         + " (" + root.editSherpaHangoverSec.toFixed(2) + " s)"
   }
 
@@ -388,8 +432,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaEndpointSilence1") || "Phrase-end silence (long)"
-    description: (pluginApi?.tr("settings.sherpaEndpointSilence1Desc") || "Streaming pass: long trailing silence ends a phrase.")
+    label: root.pluginApi?.tr("settings.sherpaEndpointSilence1") || "Phrase-end silence (long)"
+    description: (root.pluginApi?.tr("settings.sherpaEndpointSilence1Desc") || "Streaming pass: long trailing silence ends a phrase.")
         + " (" + root.editSherpaEndpointSilence1.toFixed(1) + " s)"
   }
 
@@ -405,8 +449,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isSherpaEngine
-    label: pluginApi?.tr("settings.sherpaEndpointSilence2") || "Phrase-end silence (short)"
-    description: (pluginApi?.tr("settings.sherpaEndpointSilence2Desc") || "Streaming pass: shorter silence can also end a phrase.")
+    label: root.pluginApi?.tr("settings.sherpaEndpointSilence2") || "Phrase-end silence (short)"
+    description: (root.pluginApi?.tr("settings.sherpaEndpointSilence2Desc") || "Streaming pass: shorter silence can also end a phrase.")
         + " (" + root.editSherpaEndpointSilence2.toFixed(1) + " s)"
   }
 
@@ -423,8 +467,8 @@ ColumnLayout {
   NSpinBox {
     visible: root.isSherpaEngine
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.sherpaMaxActivePaths") || "Streaming beam paths"
-    description: pluginApi?.tr("settings.sherpaMaxActivePathsDesc") || "Zipformer search width (1–8). Higher may improve accuracy at CPU cost."
+    label: root.pluginApi?.tr("settings.sherpaMaxActivePaths") || "Streaming beam paths"
+    description: root.pluginApi?.tr("settings.sherpaMaxActivePathsDesc") || "Zipformer search width (1–8). Higher may improve accuracy at CPU cost."
     from: 1
     to: 8
     value: root.editSherpaMaxActivePaths
@@ -433,8 +477,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwModel") || "Whisper model size"
-    description: pluginApi?.tr("settings.fwModelDesc") || "small or medium recommended for accented English. Downloads automatically on first use."
+    label: root.pluginApi?.tr("settings.fwModel") || "Whisper model size"
+    description: root.pluginApi?.tr("settings.fwModelDesc") || "small or medium recommended for accented English. Downloads automatically on first use."
     Layout.topMargin: Style.marginS
   }
 
@@ -444,13 +488,13 @@ ColumnLayout {
     model: root._fwModelModel
     currentKey: root.editFwModel
     onSelected: key => root.editFwModel = key
-    defaultValue: _defaults?.fwModel || "small"
+    defaultValue: root._defaults?.fwModel || "small"
   }
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwDevice") || "faster-whisper device"
-    description: pluginApi?.tr("settings.fwDeviceDesc") || "CUDA if available; CPU works with int8 quantization"
+    label: root.pluginApi?.tr("settings.fwDevice") || "faster-whisper device"
+    description: root.pluginApi?.tr("settings.fwDeviceDesc") || "CUDA if available; CPU works with int8 quantization"
     Layout.topMargin: Style.marginS
   }
 
@@ -460,13 +504,13 @@ ColumnLayout {
     model: root._fwDeviceModel
     currentKey: root.editFwDevice
     onSelected: key => root.editFwDevice = key
-    defaultValue: _defaults?.fwDevice || "auto"
+    defaultValue: root._defaults?.fwDevice || "auto"
   }
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwComputeType") || "Compute type"
-    description: pluginApi?.tr("settings.fwComputeTypeDesc") || "int8 on CPU; int8_float16 or float16 on GPU. Auto picks a sensible default."
+    label: root.pluginApi?.tr("settings.fwComputeType") || "Compute type"
+    description: root.pluginApi?.tr("settings.fwComputeTypeDesc") || "int8 on CPU; int8_float16 or float16 on GPU. Auto picks a sensible default."
     Layout.topMargin: Style.marginS
   }
 
@@ -476,7 +520,7 @@ ColumnLayout {
     model: root._fwComputeModel
     currentKey: root.editFwComputeType
     onSelected: key => root.editFwComputeType = key
-    defaultValue: _defaults?.fwComputeType || "auto"
+    defaultValue: root._defaults?.fwComputeType || "auto"
   }
 
   NDivider {
@@ -487,16 +531,16 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwAdvanced") || "faster-whisper advanced tuning"
-    description: pluginApi?.tr("settings.fwAdvancedDesc")
+    label: root.pluginApi?.tr("settings.fwAdvanced") || "faster-whisper advanced tuning"
+    description: root.pluginApi?.tr("settings.fwAdvancedDesc")
         || "Decode quality and pause segmentation. For accented English: set Language to English, try medium model, add an initial prompt. Restart backend after changes."
   }
 
   NSpinBox {
     visible: root.isFwEngine
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.fwBeamSize") || "Beam size"
-    description: pluginApi?.tr("settings.fwBeamSizeDesc") || "Wider search (1–10). 5 is default; try 8–10 if words are wrong but latency is OK."
+    label: root.pluginApi?.tr("settings.fwBeamSize") || "Beam size"
+    description: root.pluginApi?.tr("settings.fwBeamSizeDesc") || "Wider search (1–10). 5 is default; try 8–10 if words are wrong but latency is OK."
     from: 1
     to: 10
     value: root.editFwBeamSize
@@ -505,8 +549,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwTemperature") || "Temperature"
-    description: (pluginApi?.tr("settings.fwTemperatureDesc") || "0 = deterministic (recommended). Slightly higher (0.2) can help rare pronunciations.")
+    label: root.pluginApi?.tr("settings.fwTemperature") || "Temperature"
+    description: (root.pluginApi?.tr("settings.fwTemperatureDesc") || "0 = deterministic (recommended). Slightly higher (0.2) can help rare pronunciations.")
         + " (" + root.editFwTemperature.toFixed(1) + ")"
   }
 
@@ -523,10 +567,10 @@ ColumnLayout {
   NTextInput {
     visible: root.isFwEngine
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.fwInitialPrompt") || "Initial prompt"
-    description: pluginApi?.tr("settings.fwInitialPromptDesc")
+    label: root.pluginApi?.tr("settings.fwInitialPrompt") || "Initial prompt"
+    description: root.pluginApi?.tr("settings.fwInitialPromptDesc")
         || "Optional style hint for Whisper (e.g. \"Indian English technical vocabulary\"). Biases spelling and punctuation."
-    placeholderText: pluginApi?.tr("settings.fwInitialPromptPlaceholder") || "Indian English, software development terms"
+    placeholderText: root.pluginApi?.tr("settings.fwInitialPromptPlaceholder") || "Indian English, software development terms"
     text: root.editFwInitialPrompt
     onTextChanged: root.editFwInitialPrompt = text
   }
@@ -534,16 +578,16 @@ ColumnLayout {
   NToggle {
     visible: root.isFwEngine
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.fwConditionOnPreviousText") || "Condition on previous text"
-    description: pluginApi?.tr("settings.fwConditionOnPreviousTextDesc") || "Use prior phrases as context. Helps continuity; turn off if text repeats."
+    label: root.pluginApi?.tr("settings.fwConditionOnPreviousText") || "Condition on previous text"
+    description: root.pluginApi?.tr("settings.fwConditionOnPreviousTextDesc") || "Use prior phrases as context. Helps continuity; turn off if text repeats."
     checked: root.editFwConditionOnPreviousText
     onToggled: checked => root.editFwConditionOnPreviousText = checked
   }
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwNoSpeechThreshold") || "No-speech threshold"
-    description: (pluginApi?.tr("settings.fwNoSpeechThresholdDesc") || "Lower if quiet speech is skipped. Default 0.6.")
+    label: root.pluginApi?.tr("settings.fwNoSpeechThreshold") || "No-speech threshold"
+    description: (root.pluginApi?.tr("settings.fwNoSpeechThresholdDesc") || "Lower if quiet speech is skipped. Default 0.6.")
         + " (" + root.editFwNoSpeechThreshold.toFixed(2) + ")"
   }
 
@@ -559,8 +603,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwCompressionRatioThreshold") || "Hallucination filter"
-    description: (pluginApi?.tr("settings.fwCompressionRatioThresholdDesc") || "Lower = stricter rejection of repetitive garbage text. Default 2.4.")
+    label: root.pluginApi?.tr("settings.fwCompressionRatioThreshold") || "Hallucination filter"
+    description: (root.pluginApi?.tr("settings.fwCompressionRatioThresholdDesc") || "Lower = stricter rejection of repetitive garbage text. Default 2.4.")
         + " (" + root.editFwCompressionRatioThreshold.toFixed(1) + ")"
   }
 
@@ -576,8 +620,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwSilenceRms") || "Mic silence gate (RMS)"
-    description: (pluginApi?.tr("settings.fwSilenceRmsDesc") || "Audio below this level is treated as silence. Lower if you speak quietly.")
+    label: root.pluginApi?.tr("settings.fwSilenceRms") || "Mic silence gate (RMS)"
+    description: (root.pluginApi?.tr("settings.fwSilenceRmsDesc") || "Audio below this level is treated as silence. Lower if you speak quietly.")
         + " (" + root.editFwSilenceRms.toFixed(3) + ")"
   }
 
@@ -593,8 +637,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwPauseSec") || "Pause before commit"
-    description: (pluginApi?.tr("settings.fwPauseSecDesc") || "Seconds of silence before a phrase is typed. Shorter = faster commits.")
+    label: root.pluginApi?.tr("settings.fwPauseSec") || "Pause before commit"
+    description: (root.pluginApi?.tr("settings.fwPauseSecDesc") || "Seconds of silence before a phrase is typed. Shorter = faster commits.")
         + " (" + root.editFwPauseSec.toFixed(1) + " s)"
   }
 
@@ -610,8 +654,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.isFwEngine
-    label: pluginApi?.tr("settings.fwPartialIntervalSec") || "Partial update interval"
-    description: (pluginApi?.tr("settings.fwPartialIntervalSecDesc") || "How often to refresh the italic preview while speaking.")
+    label: root.pluginApi?.tr("settings.fwPartialIntervalSec") || "Partial update interval"
+    description: (root.pluginApi?.tr("settings.fwPartialIntervalSecDesc") || "How often to refresh the italic preview while speaking.")
         + " (" + root.editFwPartialIntervalSec.toFixed(1) + " s)"
   }
 
@@ -628,15 +672,15 @@ ColumnLayout {
   NToggle {
     visible: root.isFwEngine
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.fwInternalVad") || "Whisper internal VAD"
-    description: pluginApi?.tr("settings.fwInternalVadDesc") || "Extra Silero VAD inside faster-whisper decode (separate from mic silence gate). Try if long silences confuse the model."
+    label: root.pluginApi?.tr("settings.fwInternalVad") || "Whisper internal VAD"
+    description: root.pluginApi?.tr("settings.fwInternalVadDesc") || "Extra Silero VAD inside faster-whisper decode (separate from mic silence gate). Try if long silences confuse the model."
     checked: root.editFwInternalVad
     onToggled: checked => root.editFwInternalVad = checked
   }
 
   NLabel {
     visible: !root.isFwEngine
-    description: pluginApi?.tr("settings.engineFwHint")
+    description: root.pluginApi?.tr("settings.engineFwHint")
         || "Select faster-whisper above to configure Whisper model size and compute options."
     Layout.topMargin: Style.marginXS
   }
@@ -647,8 +691,8 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.language") || "Language"
-    description: pluginApi?.tr("settings.languageDesc")
+    label: root.pluginApi?.tr("settings.language") || "Language"
+    description: root.pluginApi?.tr("settings.languageDesc")
         || "For non-native English, pick English explicitly instead of Auto-detect — this often improves accuracy with both engines."
   }
 
@@ -657,7 +701,7 @@ ColumnLayout {
     model: root._languageModel
     currentKey: root.editLanguage
     onSelected: key => root.editLanguage = key
-    defaultValue: _defaults?.language || "auto"
+    defaultValue: root._defaults?.language || "auto"
   }
 
   NDivider {
@@ -666,48 +710,87 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.behavior") || "Behavior"
-    description: pluginApi?.tr("settings.behaviorDesc") || "Overlay, typing, and noise gating"
+    label: root.pluginApi?.tr("settings.behavior") || "Behavior"
+    description: root.pluginApi?.tr("settings.behaviorDesc") || "Overlay, typing, and noise gating"
   }
 
   NToggle {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.showOverlay") || "Show live overlay"
-    description: pluginApi?.tr("settings.showOverlayDesc") || "Floating transcript card while dictating"
+    label: root.pluginApi?.tr("settings.showOverlay") || "Show live overlay"
+    description: root.pluginApi?.tr("settings.showOverlayDesc") || "Compact bubble while dictating (click-through; position in settings)"
     checked: root.editShowOverlay
-    onToggled: checked => root.editShowOverlay = checked
+    onToggled: checked => {
+      root.editShowOverlay = checked
+      if (checked)
+        root.setOverlayPreview(true)
+      else
+        root.setOverlayPreview(false)
+    }
+  }
+
+  NLabel {
+    visible: root.editShowOverlay
+    label: root.pluginApi?.tr("settings.overlayPositionHint") || "Overlay placement"
+    description: root.overlayPreviewActive()
+        ? (root.overlayPreviewMultiMonitor()
+            ? (root.pluginApi?.tr("settings.overlayPositionHintActiveMulti")
+                || "Drag the highlighted bubble. Use Switch monitor to position it on each display.")
+            : (root.pluginApi?.tr("settings.overlayPositionHintActive")
+                || "Drag the highlighted bubble. It stays visible while these settings are open."))
+        : (root.pluginApi?.tr("settings.overlayPositionHintDesc")
+            || "Enable live overlay above to preview and drag the bubble here. Saved per monitor.")
+  }
+
+  RowLayout {
+    Layout.fillWidth: true
+    visible: root.editShowOverlay
+    spacing: Style.marginS
+
+    NButton {
+      text: root.overlayPreviewActive()
+          ? (root.pluginApi?.tr("settings.overlayPositionHide") || "Hide preview")
+          : (root.pluginApi?.tr("settings.overlayPositionShow") || "Show preview")
+      outlined: true
+      enabled: !root.sessionCurrentlyActive()
+      onClicked: root.setOverlayPreview(!root.overlayPreviewActive())
+    }
+
+    NButton {
+      visible: root.overlayPreviewActive() && root.overlayPreviewMultiMonitor()
+      text: root.pluginApi?.tr("settings.overlayPositionSwitch") || "Switch monitor"
+      outlined: true
+      enabled: !root.sessionCurrentlyActive()
+      onClicked: root.cycleOverlayPreviewScreen()
+    }
+
+    NButton {
+      text: root.pluginApi?.tr("settings.overlayPositionReset") || "Reset position"
+      outlined: true
+      enabled: root.overlayPreviewActive()
+      onClicked: {
+        if (root.pluginApi?.mainInstance)
+          root.pluginApi.mainInstance.resetOverlayPosition()
+      }
+    }
   }
 
   NToggle {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.showPartial") || "Show partial transcript"
+    label: root.pluginApi?.tr("settings.showPartial") || "Show partial transcript"
     description: root.isFwEngine
-        ? (pluginApi?.tr("settings.showPartialFwDesc")
+        ? (root.pluginApi?.tr("settings.showPartialFwDesc")
             || "Italic preview while faster-whisper decodes the current phrase")
-        : (pluginApi?.tr("settings.showPartialSherpaDesc")
-            || pluginApi?.tr("settings.showPartialDesc")
+        : (root.pluginApi?.tr("settings.showPartialSherpaDesc")
+            || root.pluginApi?.tr("settings.showPartialDesc")
             || "Italic preview from sherpa streaming pass")
     checked: root.editShowPartial
     onToggled: checked => root.editShowPartial = checked
   }
 
-  NComboBox {
-    Layout.fillWidth: true
-    label: pluginApi?.tr("settings.overlayPosition") || "Overlay position"
-    description: pluginApi?.tr("settings.overlayPositionDesc") || "Where the transcript card appears on screen"
-    model: [
-      { "key": "bottom", "name": pluginApi?.tr("settings.overlayBottom") || "Bottom" },
-      { "key": "top", "name": pluginApi?.tr("settings.overlayTop") || "Top" }
-    ]
-    currentKey: root.editOverlayPosition
-    onSelected: key => root.editOverlayPosition = key
-    defaultValue: _defaults?.overlayPosition || "bottom"
-  }
-
   NToggle {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.autoType") || "Auto-type on commit"
-    description: pluginApi?.tr("settings.autoTypeDesc") || "Type each phrase into the focused window via wtype (off = clipboard only on stop)"
+    label: root.pluginApi?.tr("settings.autoType") || "Auto-type on commit"
+    description: root.pluginApi?.tr("settings.autoTypeDesc") || "Type each phrase into the focused window via wtype (off = clipboard only on stop)"
     checked: root.editAutoType
     onToggled: checked => root.editAutoType = checked
   }
@@ -715,15 +798,15 @@ ColumnLayout {
   NToggle {
     Layout.fillWidth: true
     label: root.isFwEngine
-        ? (pluginApi?.tr("settings.vadEnabledFw") || "Silence detection")
-        : (pluginApi?.tr("settings.vadEnabledSherpa")
-            || pluginApi?.tr("settings.vadEnabled")
+        ? (root.pluginApi?.tr("settings.vadEnabledFw") || "Silence detection")
+        : (root.pluginApi?.tr("settings.vadEnabledSherpa")
+            || root.pluginApi?.tr("settings.vadEnabled")
             || "Noise gate (VAD)")
     description: root.isFwEngine
-        ? (pluginApi?.tr("settings.vadEnabledFwDesc")
+        ? (root.pluginApi?.tr("settings.vadEnabledFwDesc")
             || "Skip decode during silence; re-decode on pauses (RMS gate)")
-        : (pluginApi?.tr("settings.vadEnabledSherpaDesc")
-            || pluginApi?.tr("settings.vadEnabledDesc")
+        : (root.pluginApi?.tr("settings.vadEnabledSherpaDesc")
+            || root.pluginApi?.tr("settings.vadEnabledDesc")
             || "Silero VAD skips decode on non-speech audio")
     checked: root.editVadEnabled
     onToggled: checked => root.editVadEnabled = checked
@@ -731,8 +814,8 @@ ColumnLayout {
 
   NLabel {
     visible: root.editVadEnabled && !root.isFwEngine
-    label: pluginApi?.tr("settings.vadThreshold") || "VAD sensitivity"
-    description: (pluginApi?.tr("settings.vadThresholdDesc") || "Higher = stricter (less background noise). Restart backend after change.")
+    label: root.pluginApi?.tr("settings.vadThreshold") || "VAD sensitivity"
+    description: (root.pluginApi?.tr("settings.vadThresholdDesc") || "Higher = stricter (less background noise). Restart backend after change.")
         + " (" + root.editVadThreshold.toFixed(2) + ")"
   }
 
@@ -779,8 +862,8 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.hotkeys.title") || "Keyboard shortcuts"
-    description: pluginApi?.tr("settings.hotkeys.desc")
+    label: root.pluginApi?.tr("settings.hotkeys.title") || "Keyboard shortcuts"
+    description: root.pluginApi?.tr("settings.hotkeys.desc")
         || "Dictation does not register global hotkeys itself. Bind the IPC commands below in your compositor (Niri, Hyprland, etc.). The bar mic button always toggles recording."
     Layout.topMargin: Style.marginS
   }
@@ -795,9 +878,9 @@ ColumnLayout {
       id: hotkeysCode
       anchors.fill: parent
       anchors.margins: Style.marginS
-      text: (pluginApi?.tr("settings.hotkeys.toggle") || "Toggle session") + ":\n  " + root.ipcToggleCmd
-          + "\n\n" + (pluginApi?.tr("settings.hotkeys.start") || "Start") + ":\n  " + root.ipcStartCmd
-          + "\n\n" + (pluginApi?.tr("settings.hotkeys.stop") || "Stop") + ":\n  " + root.ipcStopCmd
+      text: (root.pluginApi?.tr("settings.hotkeys.toggle") || "Toggle session") + ":\n  " + root.ipcToggleCmd
+          + "\n\n" + (root.pluginApi?.tr("settings.hotkeys.start") || "Start") + ":\n  " + root.ipcStartCmd
+          + "\n\n" + (root.pluginApi?.tr("settings.hotkeys.stop") || "Stop") + ":\n  " + root.ipcStopCmd
       color: Color.mOnSurfaceVariant
       pointSize: Style.fontSizeXS
       font.family: "monospace"
@@ -806,7 +889,7 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.hotkeys.example") || "Example keybind"
+    label: root.pluginApi?.tr("settings.hotkeys.example") || "Example keybind"
     description: root.compositorExampleDesc
     Layout.topMargin: Style.marginS
   }
@@ -831,9 +914,9 @@ ColumnLayout {
 
   NTextInput {
     Layout.fillWidth: true
-    label: pluginApi?.tr("settings.hotkeys.stopHintLabel") || "Overlay stop key label"
-    description: pluginApi?.tr("settings.hotkeys.stopHintDesc")
-        || "Optional key combo shown on the live overlay (e.g. Super+Shift+D). Leave empty to hide."
+    label: root.pluginApi?.tr("settings.hotkeys.stopHintLabel") || "Stop key label"
+    description: root.pluginApi?.tr("settings.hotkeys.stopHintDesc")
+        || "Optional key combo shown in the bar tooltip while dictating (e.g. Super+Shift+D). Leave empty to hide."
     placeholderText: "Super+Shift+D"
     text: root.editStopHotkeyHint
     onTextChanged: root.editStopHotkeyHint = text
@@ -846,8 +929,8 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.deps.title") || "Installation checks"
-    description: pluginApi?.tr("settings.deps.desc")
+    label: root.pluginApi?.tr("settings.deps.title") || "Installation checks"
+    description: root.pluginApi?.tr("settings.deps.desc")
         || "Verify Python packages, speech models, and typing tools before dictating."
   }
 
@@ -869,13 +952,14 @@ ColumnLayout {
         model: root.depChecks
 
         delegate: RowLayout {
+          id: depCheckRow
           required property var modelData
           Layout.fillWidth: true
           spacing: Style.marginS
 
           NIcon {
-            icon: modelData.ok ? "circle-check-filled" : "alert-triangle-filled"
-            color: modelData.ok ? Color.mPrimary : Color.mError
+            icon: depCheckRow.modelData.ok ? "circle-check-filled" : "alert-triangle-filled"
+            color: depCheckRow.modelData.ok ? Color.mPrimary : Color.mError
             applyUiScale: false
           }
 
@@ -884,16 +968,16 @@ ColumnLayout {
             spacing: 1
 
             NText {
-              text: modelData.label || ""
+              text: depCheckRow.modelData.label || ""
               color: Color.mOnSurface
               font.weight: Font.Medium
               pointSize: Style.fontSizeS
             }
             NText {
-              text: modelData.ok
-                  ? (pluginApi?.tr("settings.deps.ok") || "OK")
-                  : (modelData.fix || modelData.detail || "")
-              color: modelData.ok ? Color.mOnSurfaceVariant : Color.mError
+              text: depCheckRow.modelData.ok
+                  ? (root.pluginApi?.tr("settings.deps.ok") || "OK")
+                  : (depCheckRow.modelData.fix || depCheckRow.modelData.detail || "")
+              color: depCheckRow.modelData.ok ? Color.mOnSurfaceVariant : Color.mError
               pointSize: Style.fontSizeXS
               wrapMode: Text.WordWrap
               Layout.fillWidth: true
@@ -903,8 +987,8 @@ ColumnLayout {
       }
 
       NText {
-        visible: root.depChecks.length === 0 && !root.depChecking && !pluginApi?.mainInstance
-        text: pluginApi?.tr("settings.deps.noMain") || "Plugin not fully loaded — close and reopen settings, or reload the plugin."
+        visible: root.depChecks.length === 0 && !root.depChecking && !root.pluginApi?.mainInstance
+        text: root.pluginApi?.tr("settings.deps.noMain") || "Plugin not fully loaded — close and reopen settings, or reload the plugin."
         color: Color.mError
         pointSize: Style.fontSizeS
         wrapMode: Text.WordWrap
@@ -912,15 +996,15 @@ ColumnLayout {
       }
 
       NText {
-        visible: root.depChecks.length === 0 && !root.depChecking && pluginApi?.mainInstance
-        text: pluginApi?.tr("settings.deps.notRun") || "Click Verify installation to run checks."
+        visible: root.depChecks.length === 0 && !root.depChecking && root.pluginApi?.mainInstance
+        text: root.pluginApi?.tr("settings.deps.notRun") || "Click Verify installation to run checks."
         color: Color.mOnSurfaceVariant
         pointSize: Style.fontSizeS
       }
 
       NText {
         visible: root.depChecking
-        text: pluginApi?.tr("settings.deps.checking") || "Checking..."
+        text: root.pluginApi?.tr("settings.deps.checking") || "Checking..."
         color: Color.mOnSurfaceVariant
         pointSize: Style.fontSizeS
       }
@@ -932,7 +1016,7 @@ ColumnLayout {
     spacing: Style.marginS
 
     NButton {
-      text: pluginApi?.tr("settings.deps.verify") || "Verify installation"
+      text: root.pluginApi?.tr("settings.deps.verify") || "Verify installation"
       outlined: true
       enabled: !root.depChecking && root.pluginDir.length > 0
       onClicked: root.runVerifyInstallation()
@@ -941,8 +1025,8 @@ ColumnLayout {
     NText {
       visible: root.depChecks.length > 0
       text: root.depReady
-          ? (pluginApi?.tr("settings.deps.allOk") || "All checks passed")
-          : (pluginApi?.tr("settings.deps.fixNeeded") || "Fix the items above, then verify again")
+          ? (root.pluginApi?.tr("settings.deps.allOk") || "All checks passed")
+          : (root.pluginApi?.tr("settings.deps.fixNeeded") || "Fix the items above, then verify again")
       color: root.depReady ? Color.mPrimary : Color.mError
       pointSize: Style.fontSizeS
       Layout.fillWidth: true
@@ -953,9 +1037,9 @@ ColumnLayout {
   // Backend status indicator
   Rectangle {
     Layout.fillWidth: true
-    height: backendStatusRow.implicitHeight + Style.marginM * 2
+    Layout.preferredHeight: backendStatusRow.implicitHeight + Style.marginM * 2
     color: {
-      var st = pluginApi?.mainInstance?.backendState || "stopped"
+      var st = root.pluginApi?.mainInstance?.backendState || "stopped"
       switch (st) {
       case "error": return Color.mErrorContainer
       case "idle": return Color.mPrimaryContainer
@@ -979,7 +1063,7 @@ ColumnLayout {
       NIcon {
         id: statusIcon
         icon: {
-          var st = pluginApi?.mainInstance?.backendState || "stopped"
+          var st = root.pluginApi?.mainInstance?.backendState || "stopped"
           switch (st) {
           case "idle": return "circle-check-filled"
           case "recording": return "player-record-filled"
@@ -992,7 +1076,7 @@ ColumnLayout {
           }
         }
         color: {
-          var st = pluginApi?.mainInstance?.backendState || "stopped"
+          var st = root.pluginApi?.mainInstance?.backendState || "stopped"
           switch (st) {
           case "idle": return Color.mOnPrimaryContainer
           case "recording": return Color.mOnErrorContainer
@@ -1008,7 +1092,7 @@ ColumnLayout {
 
         RotationAnimator on rotation {
           running: {
-            var st = pluginApi?.mainInstance?.backendState || "stopped"
+            var st = root.pluginApi?.mainInstance?.backendState || "stopped"
             return st === "starting" || st === "transcribing"
           }
           from: 0; to: 360
@@ -1020,7 +1104,7 @@ ColumnLayout {
           property: "rotation"
           value: 0
           when: {
-            var st = pluginApi?.mainInstance?.backendState || "stopped"
+            var st = root.pluginApi?.mainInstance?.backendState || "stopped"
             return st !== "starting" && st !== "transcribing"
           }
         }
@@ -1031,29 +1115,29 @@ ColumnLayout {
         spacing: 1
 
         NText {
-          text: pluginApi?.tr("settings.backendStatus") || "Backend:"
+          text: root.pluginApi?.tr("settings.backendStatus") || "Backend:"
           color: Color.mOnSurface
           font.weight: Font.Medium
         }
         NText {
           text: {
-            var st = pluginApi?.mainInstance?.backendState || "stopped"
+            var st = root.pluginApi?.mainInstance?.backendState || "stopped"
             switch (st) {
-              case "idle": return pluginApi?.tr("settings.status.idle") || "Ready"
-              case "recording": return pluginApi?.tr("settings.status.recording") || "Recording"
-              case "transcribing": return pluginApi?.tr("settings.status.transcribing") || "Transcribing"
-              case "starting": return pluginApi?.tr("settings.status.starting") || "Starting..."
-              case "stopping": return pluginApi?.tr("settings.status.stopping") || "Stopping..."
-              case "setup": return pluginApi?.tr("settings.status.setup") || "Installing..."
-              case "error": return pluginApi?.tr("settings.status.error") || "Error"
-              default: return pluginApi?.tr("settings.status.stopped") || "Stopped"
+              case "idle": return root.pluginApi?.tr("settings.status.idle") || "Ready"
+              case "recording": return root.pluginApi?.tr("settings.status.recording") || "Recording"
+              case "transcribing": return root.pluginApi?.tr("settings.status.transcribing") || "Transcribing"
+              case "starting": return root.pluginApi?.tr("settings.status.starting") || "Starting..."
+              case "stopping": return root.pluginApi?.tr("settings.status.stopping") || "Stopping..."
+              case "setup": return root.pluginApi?.tr("settings.status.setup") || "Installing..."
+              case "error": return root.pluginApi?.tr("settings.status.error") || "Error"
+              default: return root.pluginApi?.tr("settings.status.stopped") || "Stopped"
             }
           }
           color: Color.mOnSurfaceVariant
           pointSize: Style.fontSizeS
         }
         NText {
-          text: pluginApi?.mainInstance?.backendMessage || ""
+          text: root.pluginApi?.mainInstance?.backendMessage || ""
           color: Color.mOnSurfaceVariant
           pointSize: Style.fontSizeXS
           visible: text.length > 0
@@ -1065,15 +1149,15 @@ ColumnLayout {
       Item { Layout.fillWidth: true }
 
       NButton {
-        text: pluginApi?.tr("settings.restartBackend") || "Restart"
+        text: root.pluginApi?.tr("settings.restartBackend") || "Restart"
         outlined: true
         visible: {
-          var st = pluginApi?.mainInstance?.backendState || "stopped"
+          var st = root.pluginApi?.mainInstance?.backendState || "stopped"
           return st === "idle" || st === "error" || st === "stopped" || st === "stopping"
         }
         onClicked: {
-          if (pluginApi?.mainInstance) {
-            pluginApi.mainInstance.restartBackend()
+          if (root.pluginApi?.mainInstance) {
+            root.pluginApi.mainInstance.restartBackend()
           }
         }
       }
@@ -1086,8 +1170,8 @@ ColumnLayout {
 
   // Optional safety cap (0 = unlimited, session ends on hotkey/mic toggle only)
   NLabel {
-    label: pluginApi?.tr("settings.timeout") || "Safety timeout"
-    description: pluginApi?.tr("settings.timeoutDesc") || "Optional max seconds (0 = unlimited). Sessions stop only via hotkey or mic click."
+    label: root.pluginApi?.tr("settings.timeout") || "Safety timeout"
+    description: root.pluginApi?.tr("settings.timeoutDesc") || "Optional max seconds (0 = unlimited). Sessions stop only via hotkey or mic click."
     Layout.topMargin: Style.marginS
   }
 
@@ -1106,8 +1190,8 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.debug") || "Debug"
-    description: pluginApi?.tr("settings.debugDesc") || "Backend controls and log output"
+    label: root.pluginApi?.tr("settings.debug") || "Debug"
+    description: root.pluginApi?.tr("settings.debugDesc") || "Backend controls and log output"
   }
 
   RowLayout {
@@ -1115,29 +1199,29 @@ ColumnLayout {
     spacing: Style.marginS
 
     NButton {
-      text: pluginApi?.tr("settings.startBackend") || "Start"
+      text: root.pluginApi?.tr("settings.restartBackend") || "Restart"
       outlined: true
       visible: {
-        var st = pluginApi?.mainInstance?.backendState || "stopped"
-        return st === "stopped" || st === "error" || st === "stopping"
+        var st = root.pluginApi?.mainInstance?.backendState || "stopped"
+        return st !== "setup"
       }
       onClicked: {
-        if (pluginApi?.mainInstance) {
-          pluginApi.mainInstance.ensureBackend()
+        if (root.pluginApi?.mainInstance) {
+          root.pluginApi.mainInstance.restartBackend()
         }
       }
     }
 
     NButton {
-      text: pluginApi?.tr("settings.stopBackend") || "Stop"
+      text: root.pluginApi?.tr("settings.stopBackend") || "Stop"
       outlined: true
       visible: {
-        var st = pluginApi?.mainInstance?.backendState || "stopped"
-        return st !== "stopped" && st !== "setup" && st !== "stopping"
+        var st = root.pluginApi?.mainInstance?.backendState || "stopped"
+        return st === "idle" || st === "recording" || st === "transcribing" || st === "starting"
       }
       onClicked: {
-        if (pluginApi?.mainInstance) {
-          pluginApi.mainInstance.stopBackend()
+        if (root.pluginApi?.mainInstance) {
+          root.pluginApi.mainInstance.stopBackend()
         }
       }
     }
@@ -1145,7 +1229,7 @@ ColumnLayout {
   }
 
   NLabel {
-    label: pluginApi?.tr("settings.logs") || "Logs"
+    label: root.pluginApi?.tr("settings.logs") || "Logs"
     Layout.topMargin: Style.marginS
   }
 
@@ -1162,18 +1246,18 @@ ColumnLayout {
       NText {
         id: logText
         text: {
-          var mi = pluginApi?.mainInstance
-          if (!mi) return pluginApi?.tr("settings.noLogs") || "Plugin not loaded"
+          var mi = root.pluginApi?.mainInstance
+          if (!mi) return root.pluginApi?.tr("settings.noLogs") || "Plugin not loaded"
           var result = mi.backendLog || ""
           var err = mi.backendStderr || ""
           var out = mi.backendStdout || ""
           if (err) {
-            result += (result ? "\n\n" : "") + (pluginApi?.tr("settings.stderr") || "STDERR:") + "\n" + err
+            result += (result ? "\n\n" : "") + (root.pluginApi?.tr("settings.stderr") || "STDERR:") + "\n" + err
           }
           if (out) {
-            result += (result ? "\n\n" : "") + (pluginApi?.tr("settings.stdout") || "STDOUT:") + "\n" + out
+            result += (result ? "\n\n" : "") + (root.pluginApi?.tr("settings.stdout") || "STDOUT:") + "\n" + out
           }
-          if (!result) result = pluginApi?.tr("settings.noLogs") || "(no output yet)"
+          if (!result) result = root.pluginApi?.tr("settings.noLogs") || "(no output yet)"
           return result
         }
         color: Color.mOnSurfaceVariant
@@ -1184,12 +1268,12 @@ ColumnLayout {
   }
 
   NButton {
-    text: pluginApi?.tr("settings.clearLogs") || "Clear logs"
+    text: root.pluginApi?.tr("settings.clearLogs") || "Clear logs"
     outlined: true
     Layout.topMargin: Style.marginS
     onClicked: {
-      if (pluginApi?.mainInstance) {
-        pluginApi.mainInstance.clearLogs()
+      if (root.pluginApi?.mainInstance) {
+        root.pluginApi.mainInstance.clearLogs()
       }
     }
   }
@@ -1229,7 +1313,6 @@ ColumnLayout {
     pluginApi.pluginSettings.showOverlay = root.editShowOverlay
     pluginApi.pluginSettings.showPartialTranscript = root.editShowPartial
     pluginApi.pluginSettings.autoType = root.editAutoType
-    pluginApi.pluginSettings.overlayPosition = root.editOverlayPosition
     pluginApi.pluginSettings.stopHotkeyHint = root.editStopHotkeyHint.trim()
     pluginApi.pluginSettings.vadEnabled = root.editVadEnabled
     pluginApi.pluginSettings.vadThreshold = Math.max(0.1, Math.min(0.9, parseFloat(root.editVadThreshold) || 0.4))
@@ -1241,6 +1324,8 @@ ColumnLayout {
     if (pluginApi?.mainInstance) {
       pluginApi.mainInstance.updateSettings()
     }
+
+    root.setOverlayPreview(false)
 
     Logger.i("Dictation", "Settings saved")
   }

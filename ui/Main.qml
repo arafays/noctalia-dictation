@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -19,6 +20,58 @@ Item {
   property string _lastErrorNotified: ""
   property bool _venvReady: false
   property var panelScreen: null
+  property bool overlayPositionPreview: false
+  property int overlayPositionRevision: 0
+  property string overlayScreenName: ""
+
+  readonly property int overlayScreenCount: Quickshell.screens ? Quickshell.screens.length : 0
+
+  function defaultOverlayScreenName() {
+    if (Quickshell.screens && Quickshell.screens.length > 0)
+      return Quickshell.screens[0].name || ""
+    return ""
+  }
+
+  function resolveOverlayScreenName(preferred) {
+    var name = (preferred || "").trim()
+    if (name.length > 0)
+      return name
+    if (overlayScreenName.length > 0)
+      return overlayScreenName
+    return defaultOverlayScreenName()
+  }
+
+  function setOverlayPositionPreview(enabled, screenName) {
+    if (enabled) {
+      overlayScreenName = resolveOverlayScreenName(screenName)
+      overlayPositionPreview = true
+    } else {
+      overlayPositionPreview = false
+    }
+  }
+
+  function cycleOverlayPreviewScreen() {
+    if (!Quickshell.screens || Quickshell.screens.length <= 1)
+      return
+    var names = []
+    for (var i = 0; i < Quickshell.screens.length; i++)
+      names.push(Quickshell.screens[i].name || "")
+    var idx = names.indexOf(overlayScreenName)
+    if (idx < 0)
+      idx = 0
+    else
+      idx = (idx + 1) % names.length
+    overlayScreenName = names[idx]
+    overlayPositionRevision++
+  }
+
+  function resetOverlayPosition() {
+    if (!pluginApi)
+      return
+    pluginApi.pluginSettings.overlayCustomPositions = {}
+    pluginApi.saveSettings()
+    overlayPositionRevision++
+  }
 
   onPluginApiChanged: {
     if (pluginApi) {
@@ -57,11 +110,38 @@ Item {
 
   property bool _launchingBackend: false
   property bool _restartAfterStop: false
+  property bool _awaitingOwnBackend: false
   property string backendStdout: ""
   property string backendStderr: ""
   property string backendLog: ""
   readonly property int maxLogChars: 12000
   property bool _useSystemPython: false
+  readonly property string runtimeDir: {
+    var rt = Quickshell.env("XDG_RUNTIME_DIR")
+    if (rt)
+      return rt
+    return "/tmp/user-" + (Quickshell.env("UID") || "1000")
+  }
+  readonly property string statusFileUrl: "file://" + runtimeDir + "/noctalia-dictation-status.json"
+
+  function applyLiveStatusFromFile() {
+    if (!sessionActive() || !_statusFile.loaded)
+      return
+    const raw = _statusFile.text()
+    if (!raw || raw.length === 0)
+      return
+    try {
+      var data = JSON.parse(raw)
+      if (data.state && data.state !== "recording")
+        return
+      if (data.liveTranscript !== undefined)
+        liveTranscript = data.liveTranscript
+      if (data.partialTranscript !== undefined)
+        partialTranscript = data.partialTranscript
+    } catch (e) {
+      Logger.w("Dictation", "status file parse failed:", e)
+    }
+  }
 
   function appendLog(line) {
     var d = new Date()
@@ -92,12 +172,43 @@ Item {
     }
   }
 
+  function shouldIgnoreStaleIpc(data) {
+    if (_backendProcess.running)
+      return false
+    if (!_awaitingOwnBackend && backendState !== "starting" && backendState !== "stopped")
+      return false
+    var msg = (data.message || "").toLowerCase()
+    return msg.indexOf("broken pipe") >= 0
+        || msg.indexOf("server error") >= 0
+        || msg === "another instance is running"
+  }
+
+  function beginBackendStartup() {
+    _awaitingOwnBackend = true
+    backendState = "stopped"
+    backendMessage = ""
+    appendLog("Waiting for previous backend to exit...")
+    _orphanCleanupProcess.exec(pythonCmd(["ensure_stopped"]))
+  }
+
   function stopBackendInternal() {
     backendState = "stopping"
     backendMessage = "stopping"
     appendLog("Stopping backend...")
     Quickshell.execDetached(pythonCmd(["exit"]))
     _stopGuardTimer.restart()
+  }
+
+  Process {
+    id: _orphanCleanupProcess
+
+    onRunningChanged: {
+      if (!running && root._awaitingOwnBackend) {
+        root.appendLog("Previous backend exited, launching new server")
+        root._awaitingOwnBackend = false
+        root.ensureBackend()
+      }
+    }
   }
 
   Process {
@@ -115,9 +226,8 @@ Item {
           root._useSystemPython = false
           Logger.i("Dictation", "system Python missing packages, will use venv")
         }
-        // Kill any orphaned backend from previous session now that we know which interpreter to use
-        root.cleanupOrphanedBackend()
-        root._startupDelayTimer.start()
+        // Wait for any orphaned backend from a previous shell session before starting.
+        root.beginBackendStartup()
       }
     }
   }
@@ -127,7 +237,7 @@ Item {
 
     onRunningChanged: {
       if (running) {
-        Logger.i("Dictation", "starting venv setup:", setupScript)
+        Logger.i("Dictation", "starting venv setup:", root.setupScript)
       }
       if (!running) {
         var out = _setupStdout.text.trim()
@@ -161,7 +271,7 @@ Item {
       root._launchingBackend = false
       if (root.backendState === "starting") {
         root.backendState = "error"
-        var timeoutHint = pluginApi?.tr("errors.backendTimeout") ||
+        var timeoutHint = root.pluginApi?.tr("errors.backendTimeout") ||
             "Backend failed to start (timeout). Open plugin settings → Verify installation, or run: " + root.setupFixHint()
         root.backendMessage = timeoutHint
         Logger.e("Dictation", "backend launch timed out after", root.backendLaunchTimeoutMs / 1000, "s")
@@ -180,7 +290,7 @@ Item {
         Logger.i("Dictation", "retrying backend start, attempt", root._retryCount)
         root.launchBackend()
       } else if (root.backendState === "error" && root._retryCount >= 3) {
-        var retryHint = pluginApi?.tr("errors.backendRetries") ||
+        var retryHint = root.pluginApi?.tr("errors.backendRetries") ||
             "Backend failed after 3 retries. Open plugin settings → Verify installation."
         root.sendErrorNotification(retryHint)
       }
@@ -212,7 +322,7 @@ Item {
     onTriggered: {
       if (root.pendingStart) {
         root.pendingStart = false
-        root.sendErrorNotification(pluginApi?.tr("notification.timeout") || "Backend not ready, try again")
+        root.sendErrorNotification(root.pluginApi?.tr("notification.timeout") || "Backend not ready, try again")
       }
     }
   }
@@ -268,7 +378,7 @@ Item {
         root._launchingBackend = false
         _launchGuardTimer.stop()
         root.backendState = "error"
-        root.backendMessage = pluginApi?.tr("errors.backendExited") ||
+        root.backendMessage = root.pluginApi?.tr("errors.backendExited") ||
             "Backend exited unexpectedly. Check plugin settings → Logs, then Verify installation."
         root.appendLog("ERROR: backend exited during startup")
         Logger.e("Dictation", "backend process exited unexpectedly, stderr:", _backendProcess.stderr?.text || "(none)")
@@ -384,6 +494,7 @@ Item {
       return
     }
     if (backendState === "stopped" || backendState === "error" || backendState === "setup") {
+      _awaitingOwnBackend = false
       _launchingBackend = true
       backendState = "starting"
       backendMessage = "launching backend"
@@ -416,16 +527,21 @@ Item {
     appendLog("Restart requested")
     _retryCount = 0
     _venvReady = true
-    if (_backendProcess.running || backendState === "idle" || backendState === "starting"
-        || backendState === "recording" || backendState === "transcribing" || backendState === "error") {
-      _restartAfterStop = true
-      stopBackendInternal()
-    } else if (backendState === "stopping") {
+    if (backendState === "stopping") {
       _restartAfterStop = true
       _stopGuardTimer.restart()
-    } else {
-      ensureBackend()
+      return
     }
+    if (_backendProcess.running) {
+      _restartAfterStop = true
+      stopBackendInternal()
+      return
+    }
+    if (backendState !== "setup") {
+      backendState = "stopped"
+      backendMessage = ""
+    }
+    ensureBackend()
   }
 
   function stopBackend() {
@@ -450,6 +566,7 @@ Item {
       Logger.w("Dictation", "Cannot start recording: backend is", backendState)
       return
     }
+    overlayPositionPreview = false
     liveTranscript = ""
     partialTranscript = ""
     Quickshell.execDetached(pythonCmd(["start"]))
@@ -463,13 +580,16 @@ Item {
     return backendState === "recording" || backendState === "transcribing"
   }
 
-  function toggleRecording() {
+  function toggleRecording(screenName) {
     if (sessionActive()) {
       pendingStart = false
       _pendingStartTimeout.stop()
+      overlayPositionPreview = false
       stopRecording()
       return
     }
+    var name = (screenName || "").trim()
+    overlayScreenName = name.length > 0 ? name : resolveOverlayScreenName("")
     if (backendState === "error") {
       pendingStart = true
       _pendingStartTimeout.restart()
@@ -548,13 +668,27 @@ Item {
     target: "plugin:dictation"
 
     function toggle() {
-      root.toggleRecording()
+      if (root.pluginApi?.withCurrentScreen) {
+        root.pluginApi.withCurrentScreen(screen => {
+          root.toggleRecording(screen?.name || "")
+        })
+      } else {
+        root.toggleRecording("")
+      }
     }
 
     function start() {
       root.ensureBackend()
       if (root.backendState === "idle") {
-        root.startRecording()
+        if (root.pluginApi?.withCurrentScreen) {
+          root.pluginApi.withCurrentScreen(screen => {
+            root.overlayScreenName = root.resolveOverlayScreenName(screen?.name || "")
+            root.startRecording()
+          })
+        } else {
+          root.overlayScreenName = root.resolveOverlayScreenName("")
+          root.startRecording()
+        }
       } else {
         root.pendingStart = true
       }
@@ -576,68 +710,76 @@ Item {
           var ipcMsg = data.message || ""
           root.appendLog("IPC " + data.state + (ipcMsg ? ": " + ipcMsg : ""))
 
-          if (data.state === "stopped" && root.backendState === "stopping") {
-            var restart = root._restartAfterStop
-            root._restartAfterStop = false
-            root.finishStopTransition(restart)
+          if (root.shouldIgnoreStaleIpc(data)) {
+            root.appendLog("IPC ignored (stale shutdown): " + ipcMsg)
+            return
           }
 
-          root.backendState = data.state
-          if (data.state === "idle" && data.message === "ready" && data.engine) {
-            root.backendMessage = data.engine
-          } else {
-            root.backendMessage = data.message || ""
-          }
+          // IPC "stopped" is sent before the server process exits; wait for
+          // _backendProcess.onRunningChanged to call finishStopTransition.
+          var deferStopState = data.state === "stopped" && root.backendState === "stopping"
 
-          if (data.engine !== undefined && data.engine.length > 0 && data.state === "recording") {
-            root.backendMessage = data.engine
-          }
-
-          if (data.liveTranscript !== undefined) {
-            root.liveTranscript = data.liveTranscript
-          }
-          if (data.partialTranscript !== undefined) {
-            root.partialTranscript = data.partialTranscript
-          }
-
-          if (data.state === "idle" || data.state === "error" || data.state === "stopped") {
-            root.liveTranscript = ""
-            root.partialTranscript = ""
-          }
-
-          if (data.state === "error" && data.message) {
-            if (root._lastErrorNotified !== data.message) {
-              root._lastErrorNotified = data.message
-              root.sendErrorNotification(data.message)
+          if (!deferStopState) {
+            root.backendState = data.state
+            if (data.state === "idle" && data.message === "ready" && data.engine) {
+              root.backendMessage = data.engine
+            } else {
+              root.backendMessage = data.message || ""
             }
-            if (root._retryCount < 3 && !_retryTimer.running) {
-              _retryTimer.restart()
+
+            if (data.engine !== undefined && data.engine.length > 0 && data.state === "recording") {
+              root.backendMessage = data.engine
             }
-          }
 
-          if (data.state === "idle" && data.message === "ready") {
-            root._lastErrorNotified = ""
-            root._retryCount = 0
-          }
+            if (data.liveTranscript !== undefined) {
+              root.liveTranscript = data.liveTranscript
+            }
+            if (data.partialTranscript !== undefined) {
+              root.partialTranscript = data.partialTranscript
+            }
 
-          if (root.pendingStart && data.state === "idle" &&
-              (data.message === "ready" || data.message === "settings updated" || data.message === "silence" || data.message === "copied" || data.message === "no_speech")) {
-            root.pendingStart = false
-            _pendingStartTimeout.stop()
-            root.startRecording()
-          }
+            if (data.state === "idle" || data.state === "error" || data.state === "stopped") {
+              root.liveTranscript = ""
+              root.partialTranscript = ""
+            }
 
-          if (_launchingBackend && data.state !== "stopped") {
-            _launchingBackend = false
-            _launchGuardTimer.stop()
+            if (data.state === "error" && data.message) {
+              if (root._lastErrorNotified !== data.message) {
+                root._lastErrorNotified = data.message
+                root.sendErrorNotification(data.message)
+              }
+              if (root._retryCount < 3 && !_retryTimer.running) {
+                _retryTimer.restart()
+              }
+            }
+
+            if (data.state === "idle" && data.message === "ready") {
+              root._lastErrorNotified = ""
+              root._retryCount = 0
+              root._awaitingOwnBackend = false
+            }
+
+            if (root.pendingStart && data.state === "idle" &&
+                (data.message === "ready" || data.message === "settings updated" || data.message === "silence" || data.message === "copied" || data.message === "no_speech")) {
+              root.pendingStart = false
+              _pendingStartTimeout.stop()
+              root.startRecording()
+            }
+
+            if (root._launchingBackend && data.state !== "stopped") {
+              root._launchingBackend = false
+              _launchGuardTimer.stop()
+            }
+          } else if (ipcMsg) {
+            root.backendMessage = ipcMsg
           }
         }
 
           if (data.state === "idle" && data.message === "copied" && data.text && data.text.length > 0) {
             root.addHistoryEntry(data.text)
-            ToastService.showNotice(pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
+            ToastService.showNotice(root.pluginApi?.tr("notification.copied") || "Transcription copied to clipboard")
           } else if (data.state === "idle" && data.message === "no_speech") {
-            ToastService.showNotice(pluginApi?.tr("notification.noSpeech") || "No speech detected")
+            ToastService.showNotice(root.pluginApi?.tr("notification.noSpeech") || "No speech detected")
           } else if (data.state === "idle" && data.text && data.text.length > 0 && data.message !== "copied") {
           root.addHistoryEntry(data.text)
         }
@@ -647,19 +789,15 @@ Item {
     }
   }
 
-  function cleanupOrphanedBackend() {
-    // Send exit signal to any orphaned backend from previous shell session
-    Logger.i("Dictation", "cleaning up any orphaned backend...")
-    Quickshell.execDetached(pythonCmd(["exit"]))
-  }
-
-  Timer {
-    id: _startupDelayTimer
-    interval: 2000
-    onTriggered: {
-      Logger.i("Dictation", "startup delay complete, launching backend")
-      root.ensureBackend()
+  FileView {
+    id: _statusFile
+    path: root.statusFileUrl
+    watchChanges: true
+    onFileChanged: {
+      reload()
+      Qt.callLater(root.applyLiveStatusFromFile)
     }
+    onLoaded: root.applyLiveStatusFromFile()
   }
 
   Variants {
@@ -668,7 +806,7 @@ Item {
     delegate: TranscriptOverlay {
       required property var modelData
 
-      screen: modelData
+      shellScreen: modelData
       pluginApi: root.pluginApi
       mainInstance: root
     }
@@ -683,5 +821,15 @@ Item {
     Logger.i("Dictation", "backendScript:", backendScript, "venvPython:", venvPython)
     // Probe system Python first; cleanup and backend launch happen in the probe callback
     _probeProcess.running = true
+  }
+
+  Component.onDestruction: {
+    _restartAfterStop = false
+    _awaitingOwnBackend = false
+    _stopGuardTimer.stop()
+    _launchGuardTimer.stop()
+    if (_backendProcess.running) {
+      Quickshell.execDetached(pythonCmd(["exit"]))
+    }
   }
 }

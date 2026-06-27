@@ -152,8 +152,12 @@ def record_session(
         if full_text:
             copy_to_clipboard(full_text)
             send_status(
-                "idle", "copied", full_text,
-                live_transcript="", partial_transcript="", engine=engine.describe(),
+                "idle",
+                "copied",
+                full_text,
+                live_transcript="",
+                partial_transcript="",
+                engine=engine.describe(),
             )
         elif session.gate.session_has_speech:
             send_status("idle", "silence", live_transcript="", partial_transcript="", engine=engine.describe())

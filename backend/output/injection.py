@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -74,10 +75,8 @@ def type_committed(text: str) -> None:
 
 
 def copy_to_clipboard(text: str) -> None:
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(["wl-copy"], input=text.encode(), check=True, timeout=2)
-    except Exception:
-        pass
 
 
 def check_injection_tools() -> list[str]:
@@ -102,7 +101,5 @@ def injection_tools_error_message(missing: list[str]) -> str:
             "Install wl-clipboard: pacman -S wl-clipboard, apt install wl-clipboard"
         )
     if parts:
-        parts.append(
-            "Alternatively install ydotool for paste fallback, or disable auto-type in plugin settings"
-        )
+        parts.append("Alternatively install ydotool for paste fallback, or disable auto-type in plugin settings")
     return " ".join(parts)

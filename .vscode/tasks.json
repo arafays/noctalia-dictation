@@ -28,7 +28,7 @@
     {
       "label": "qmllint: all QML",
       "type": "shell",
-      "command": "find ui -name '*.qml' -print0 | xargs -0 qmllint -U",
+      "command": "find ui -name '*.qml' -print0 | xargs -0 /usr/lib/qt6/bin/qmllint --unqualified warning -I ${workspaceFolder}/.qmltooling/vfs -I /usr/lib/qt6/qml",
       "options": {
         "cwd": "${workspaceFolder}"
       },

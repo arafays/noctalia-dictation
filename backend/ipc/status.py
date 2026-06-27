@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import time
 
+from backend.paths import STATUS_FILE
+
 _last_live_sent = 0.0
+_last_file_payload = ""
+
+
+def _write_status_file(payload: dict[str, str]) -> None:
+    global _last_file_payload
+    try:
+        body = json.dumps(payload, separators=(",", ":"))
+        if body == _last_file_payload:
+            return
+        _last_file_payload = body
+        tmp = STATUS_FILE.with_suffix(".tmp")
+        tmp.write_text(body)
+        tmp.rename(STATUS_FILE)
+    except Exception:
+        pass
+
+
+def clear_status_file() -> None:
+    global _last_file_payload
+    _last_file_payload = ""
+    with contextlib.suppress(Exception):
+        STATUS_FILE.unlink(missing_ok=True)
 
 
 def send_status(
@@ -25,15 +50,23 @@ def send_status(
         payload["partialTranscript"] = partial_transcript
     if engine:
         payload["engine"] = engine
-    try:
+    _write_status_file(payload)
+
+    # Live transcript ticks go via status file only — qs ipc would activate the shell
+    # and steal keyboard focus from the window being dictated into.
+    if state == "recording" and message == "live":
+        return
+
+    if state in ("idle", "stopped", "error"):
+        clear_status_file()
+
+    with contextlib.suppress(Exception):
         subprocess.run(
             ["qs", "ipc", "-c", "noctalia-shell", "call", "plugin:dictation", "setStatus", json.dumps(payload)],
             capture_output=True,
             timeout=2,
             check=False,
         )
-    except Exception:
-        pass
 
 
 def send_live(live_transcript: str, partial_transcript: str) -> None:
@@ -42,4 +75,11 @@ def send_live(live_transcript: str, partial_transcript: str) -> None:
     if now - _last_live_sent < 0.25:
         return
     _last_live_sent = now
-    send_status("recording", "live", live_transcript=live_transcript, partial_transcript=partial_transcript)
+    _write_status_file(
+        {
+            "state": "recording",
+            "message": "live",
+            "liveTranscript": live_transcript,
+            "partialTranscript": partial_transcript,
+        }
+    )

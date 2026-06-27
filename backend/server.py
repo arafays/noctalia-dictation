@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import fcntl
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -15,7 +17,7 @@ from typing import Any
 from backend.config import ENGINE_RELOAD_KEYS, read_settings
 from backend.diagnostics import diagnose_install
 from backend.engines.registry import load_engine, record_session, resolve_engine_id
-from backend.ipc.status import send_status
+from backend.ipc.status import clear_status_file, send_status
 from backend.output.injection import check_injection_tools, injection_tools_error_message
 from backend.paths import PID_FILE, SIGNAL_FILE
 
@@ -80,6 +82,65 @@ def _kill_stale_backend() -> bool:
         return False
 
 
+def _wait_for_pid_release(timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not PID_FILE.exists():
+            return True
+        try:
+            pid = int(PID_FILE.read_text().strip())
+            if not _is_process_alive(pid):
+                PID_FILE.unlink(missing_ok=True)
+                return True
+        except Exception:
+            PID_FILE.unlink(missing_ok=True)
+            return True
+        time.sleep(0.1)
+    return not PID_FILE.exists()
+
+
+def cmd_ensure_stopped(timeout: float = 15.0) -> None:
+    if not PID_FILE.exists():
+        return
+    try:
+        pid = int(PID_FILE.read_text().strip())
+        if not _is_process_alive(pid):
+            PID_FILE.unlink(missing_ok=True)
+            SIGNAL_FILE.unlink(missing_ok=True)
+            return
+    except Exception:
+        PID_FILE.unlink(missing_ok=True)
+        SIGNAL_FILE.unlink(missing_ok=True)
+        return
+
+    send_signal("exit")
+    if _wait_for_pid_release(timeout):
+        return
+
+    _kill_stale_backend()
+    _wait_for_pid_release(2.0)
+
+
+def _acquire_pid_lock(timeout: float = 20.0) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        pid_fd = os.open(PID_FILE, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return pid_fd
+        except BlockingIOError:
+            os.close(pid_fd)
+            try:
+                pid = int(PID_FILE.read_text().strip())
+                if not _is_process_alive(pid):
+                    _kill_stale_backend()
+                    continue
+            except Exception:
+                pass
+            time.sleep(0.2)
+    raise TimeoutError("timed out waiting for previous backend to exit")
+
+
 def send_signal(cmd: str) -> None:
     tmp = SIGNAL_FILE.with_suffix(".tmp")
     tmp.write_text(cmd)
@@ -87,36 +148,35 @@ def send_signal(cmd: str) -> None:
 
 
 def _log(msg: str) -> None:
-    print(f"dictation: {msg}", file=sys.stderr, flush=True)
+    with contextlib.suppress(OSError):  # stderr pipe closed when the shell/plugin parent exits
+        print(f"dictation: {msg}", file=sys.stderr, flush=True)
+
+
+def _is_broken_pipe(exc: BaseException) -> bool:
+    return isinstance(exc, BrokenPipeError) or (isinstance(exc, OSError) and exc.errno == errno.EPIPE)
 
 
 def backend_server() -> None:
     global _engine, _engine_id, _engine_label, _loaded_settings
 
-    send_status("idle", "starting")
+    with contextlib.suppress(Exception):
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
     _log("backend server starting")
 
-    while True:
-        pid_fd = os.open(PID_FILE, os.O_CREAT | os.O_RDWR, 0o644)
-        try:
-            fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            break
-        except BlockingIOError:
-            os.close(pid_fd)
-            try:
-                if not _is_process_alive(int(PID_FILE.read_text().strip())):
-                    _kill_stale_backend()
-                    send_status("idle", "cleaned up stale backend, restarting...")
-                    time.sleep(0.3)
-                    continue
-            except Exception:
-                pass
-            send_status("stopped", "another instance is running")
-            return
+    try:
+        pid_fd = _acquire_pid_lock()
+    except TimeoutError:
+        send_status("error", "previous backend still running; try Restart in settings")
+        _log("timed out waiting for PID lock")
+        return
 
     os.ftruncate(pid_fd, 0)
     os.write(pid_fd, str(os.getpid()).encode())
     os.fsync(pid_fd)
+
+    send_status("idle", "starting")
+    clear_status_file()
 
     settings = read_settings()
 
@@ -193,6 +253,9 @@ def backend_server() -> None:
                     else:
                         send_status("idle", "settings updated")
             except Exception as exc:
+                if _is_broken_pipe(exc):
+                    _log("parent process gone, exiting")
+                    break
                 send_status("error", f"server error: {exc}")
                 _log(f"server error: {exc}")
                 time.sleep(1)
@@ -210,7 +273,7 @@ def main() -> None:
         "command",
         nargs="?",
         default="server",
-        choices=["server", "start", "stop", "status", "exit", "update_settings", "diagnose"],
+        choices=["server", "start", "stop", "status", "exit", "ensure_stopped", "update_settings", "diagnose"],
     )
     args = parser.parse_args()
 
@@ -227,15 +290,21 @@ def main() -> None:
         print("ok")
     elif args.command == "exit":
         send_signal("exit")
-        if PID_FILE.exists():
-            try:
-                pid = int(PID_FILE.read_text().strip())
-                if _is_process_alive(pid):
-                    time.sleep(0.3)
+        if not _wait_for_pid_release(10.0):
+            if PID_FILE.exists():
+                try:
+                    pid = int(PID_FILE.read_text().strip())
                     if _is_process_alive(pid):
                         os.kill(pid, 15)
-            except Exception:
-                pass
+                        time.sleep(0.3)
+                        if _is_process_alive(pid):
+                            os.kill(pid, 9)
+                except Exception:
+                    pass
+            _wait_for_pid_release(2.0)
+        print("ok")
+    elif args.command == "ensure_stopped":
+        cmd_ensure_stopped()
         print("ok")
     elif args.command == "update_settings":
         send_signal("update_settings")
